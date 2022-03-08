@@ -1,4 +1,4 @@
-DOCKER_REGISTRY ?= hwameistor.io/scheduler
+DOCKER_REGISTRY ?= hwameistor.io/hwameistor
 RELEASE_DOCKER_REGISTRY ?= hwameistor.io/hwameistor
 
 GO_VERSION = $(shell go version)
@@ -19,13 +19,12 @@ K8S_CMD = kubectl
 
 BUILDER_NAME = hwameistor/scheduler-builder
 BUILDER_TAG = latest
-BUILDER_MOUNT_SRC_DIR = ${PROJECT_SOURCE_CODE_DIR}/../
-BUILDER_MOUNT_DST_DIR = /go/src/github.com/hwameistor
-BUILDER_WORKDIR = /go/src/github.com/hwameistor/local-storage
+BUILDER_MOUNT_SRC_DIR = ${PROJECT_SOURCE_CODE_DIR}
+BUILDER_MOUNT_DST_DIR = /go/src/github.com/hwameistor/scheduler
 
 DOCKER_SOCK_PATH=/var/run/docker.sock
-DOCKER_MAKE_CMD = docker run --rm -v ${BUILDER_MOUNT_SRC_DIR}:${BUILDER_MOUNT_DST_DIR} -v ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH} -w ${BUILDER_WORKDIR} -i ${BUILDER_NAME}:${BUILDER_TAG}
-DOCKER_DEBUG_CMD = docker run --rm -v ${BUILDER_MOUNT_SRC_DIR}:${BUILDER_MOUNT_DST_DIR} -v ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH} -w ${BUILDER_WORKDIR} -it ${BUILDER_NAME}:${BUILDER_TAG}
+DOCKER_MAKE_CMD = docker run --rm -v ${BUILDER_MOUNT_SRC_DIR}:${BUILDER_MOUNT_DST_DIR} -v ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH} -w ${BUILDER_MOUNT_DST_DIR} -i ${BUILDER_NAME}:${BUILDER_TAG}
+DOCKER_DEBUG_CMD = docker run --rm -v ${BUILDER_MOUNT_SRC_DIR}:${BUILDER_MOUNT_DST_DIR} -v ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH} -w ${BUILDER_MOUNT_DST_DIR} -it ${BUILDER_NAME}:${BUILDER_TAG}
 DOCKER_BUILDX_CMD_AMD64 = DOCKER_CLI_EXPERIMENTAL=enabled docker buildx build --platform=linux/amd64 -o type=docker
 DOCKER_BUILDX_CMD_ARM64 = DOCKER_CLI_EXPERIMENTAL=enabled docker buildx build --platform=linux/arm64 -o type=docker
 MUILT_ARCH_PUSH_CMD = ${PROJECT_SOURCE_CODE_DIR}/build/utils/docker-push-with-multi-arch.sh
@@ -36,9 +35,9 @@ CLUSTER_CRD_DIR = ${PROJECT_SOURCE_CODE_DIR}/deploy/crds
 IMAGE_TAG ?= 99.9-dev
 RELEASE_TAG ?= $(shell tagged="$$(git describe --tags --match='v*' --abbrev=0 2> /dev/null)"; if [ "$$tagged" ] && [ "$$(git rev-list -n1 HEAD)" = "$$(git rev-list -n1 $$tagged)" ]; then echo $$tagged; fi)
 
-SCHEDULER_NAME = hwameistor-scheduler
+SCHEDULER_NAME = scheduler
 SCHEDULER_IMAGE_DIR = ${PROJECT_SOURCE_CODE_DIR}
-SCHEDULER_BUILD_BIN = ${BINS_DIR}/${SCHEDULER_NAME}-run
+SCHEDULER_BUILD_BIN = ${BINS_DIR}/${SCHEDULER_NAME}
 SCHEDULER_BUILD_MAIN = ${CMDS_DIR}/main.go
 
 SCHEDULER_IMAGE_NAME = ${DOCKER_REGISTRY}/${SCHEDULER_NAME}
@@ -48,24 +47,30 @@ RELEASE_SCHEDULER_IMAGE_NAME=${RELEASE_DOCKER_REGISTRY}/${SCHEDULER_NAME}
 compile:
 	GOARCH=amd64 ${BUILD_ENVS} ${BUILD_CMD} ${BUILD_OPTIONS} -o ${SCHEDULER_BUILD_BIN} ${SCHEDULER_BUILD_MAIN}
 
-.PHONY: scheduler_arm64
-scheduler_arm64:
+.PHONY: compile_arm64
+compile_arm64:
 	GOARCH=arm64 ${BUILD_ENVS} ${BUILD_CMD} ${BUILD_OPTIONS} -o ${SCHEDULER_BUILD_BIN} ${SCHEDULER_BUILD_MAIN}
 
 .PHONY: image
 image: 
-	${DOCKER_MAKE_CMD} make scheduler
+	${DOCKER_MAKE_CMD} make compile
 	docker build -t ${SCHEDULER_IMAGE_NAME}:${IMAGE_TAG} -f ${SCHEDULER_IMAGE_DIR}/Dockerfile ${PROJECT_SOURCE_CODE_DIR}
+
+.PHONY: push_image
+push_image: 
 	docker push ${SCHEDULER_IMAGE_NAME}:${IMAGE_TAG}
 
 .PHONY: release
 release: 
 	# build for amd64 version
-	${DOCKER_MAKE_CMD} make scheduler
+	${DOCKER_MAKE_CMD} make compile
 	${DOCKER_BUILDX_CMD_AMD64} -t ${RELEASE_SCHEDULER_IMAGE_NAME}:${RELEASE_TAG}-amd64 -f ${SCHEDULER_IMAGE_DIR}/Dockerfile ${PROJECT_SOURCE_CODE_DIR}
 	# build for arm64 version
-	${DOCKER_MAKE_CMD} make scheduler_arm64
+	${DOCKER_MAKE_CMD} make compile_arm64
 	${DOCKER_BUILDX_CMD_ARM64} -t ${RELEASE_SCHEDULER_IMAGE_NAME}:${RELEASE_TAG}-arm64 -f ${SCHEDULER_IMAGE_DIR}/Dockerfile ${PROJECT_SOURCE_CODE_DIR}
+
+.PHONY: push_release
+push_release: 
 	# push to a public registry
 	${MUILT_ARCH_PUSH_CMD} ${RELEASE_SCHEDULER_IMAGE_NAME}:${RELEASE_TAG}
 
@@ -90,4 +95,4 @@ clean:
 	docker rmi -f $(shell docker images -f dangling=true -qa)
 
 unit-test:
-	bash shell/unit-test.sh
+	bash test/unit-test.sh

@@ -13,3 +13,12 @@
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+
+*.swp
+
+_build/
+tmp/
+.vscode/
+bin/
+.DS_Store
+

@@ -52,13 +52,6 @@ func (s *Scheduler) Filter(boundPVCs []*v1.PersistentVolumeClaim, pendingPVCs []
 	return s.filterForPendingPVCs(pendingPVCs, node)
 }
 
-func (s *Scheduler) CSIDriverName() string {
-	return s.csiDriverName
-}
-
-func (s *Scheduler) run() {
-}
-
 func (s *Scheduler) filterForBoundPVCs(pvcs []*v1.PersistentVolumeClaim, node *v1.Node) (bool, error) {
 
 	if len(pvcs) == 0 {
