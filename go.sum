@@ -371,8 +371,8 @@ github.com/hashicorp/serf v0.8.2/go.mod h1:6hOLApaqBFA1NXqRQAsxw9QxuDEvNxSQRwA/J
 github.com/heketi/heketi v10.3.0+incompatible/go.mod h1:bB9ly3RchcQqsQ9CpyaQwvva7RS5ytVoSoholZQON6o=
 github.com/heketi/tests v0.0.0-20151005000721-f3775cbcefd6/go.mod h1:xGMAM8JLi7UkZt1i4FQeQy0R2T8GLUwQhOP5M1gBhy4=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
-github.com/hwameistor/local-storage v0.1.0 h1:HESagKGrjxUJ1R8USETvAyfq1GhlcUVd4l0sTmFnN2E=
-github.com/hwameistor/local-storage v0.1.0/go.mod h1:FnhIH+bbUVjZbd5tMsbzajszUg3tCGycgPGyrlLn+js=
+github.com/hwameistor/local-storage v0.1.1 h1:7+PPxPjIwwcR1iTd222ng4cLhgGU+A6x+GJYa8wN3FM=
+github.com/hwameistor/local-storage v0.1.1/go.mod h1:OQ9FjZ6pe1EDO/n2YTetbRDbU6k0RKY0CcQrFdFaY+U=
 github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/imdario/mergo v0.3.5/go.mod h1:2EnlNZ0deacrJVfApfmtdGgDfMuh/nq6Ok1EcJh5FfA=

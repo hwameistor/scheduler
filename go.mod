@@ -3,7 +3,7 @@ module github.com/hwameistor/scheduler
 go 1.17
 
 require (
-	github.com/hwameistor/local-storage v0.1.0
+	github.com/hwameistor/local-storage v0.1.1
 	github.com/sirupsen/logrus v1.8.1
 	k8s.io/api v0.23.4
 	k8s.io/apimachinery v0.23.4
