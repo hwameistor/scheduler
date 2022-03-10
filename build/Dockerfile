@@ -1,5 +1,5 @@
 FROM alpine:3.11
 
-COPY ./_build/hwameistor-scheduler /
+COPY ./_build/scheduler /
 
-ENTRYPOINT [ "/hwameistor-scheduler" ]
+ENTRYPOINT [ "/scheduler" ]
