@@ -4,40 +4,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog"
+	"strings"
 )
 
 var (
 	KubeConfigFilePath = "/etc/kubernetes/scheduler.conf"
 )
 
-// BuildInClusterClientSet creates an in-cluster ClientSet
-func BuildInClusterClientset() (*kubernetes.Clientset, error) {
-	cfg, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Errorf("Failed to build cluster config: %v", err)
-		return nil, err
+func GetKubeconfigPath() (string, error) {
+	fmt.Printf("%s\n", os.Args)
+	for n, v := range os.Args {
+		if v == "--kubeconfig" {
+			return os.Args[n+1], nil
+		}
+		if strings.HasPrefix(v, "--kubeconfig=") {
+			parts := strings.SplitN(v, "=", 2)
+			return parts[1], nil
+		}
 	}
 
-	return kubernetes.NewForConfig(cfg)
-}
-
-// BuildClusterClientSet create cluster(for static pod) ClientSet
-func BuildClusterClientSet() (*kubernetes.Clientset, error) {
-	kubeConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: KubeConfigFilePath},
-		&clientcmd.ConfigOverrides{}).ClientConfig()
-	if err != nil {
-		klog.Errorf("Failed to build cluster config: %v", err)
-		return nil, err
-	}
-	kubeConfig.DisableCompression = true
-	return kubernetes.NewForConfig(kubeConfig)
-
+	return "", fmt.Errorf("flag --kubeconfig empty")
 }
 
 func FileExists(path string) bool {

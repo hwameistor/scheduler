@@ -3,6 +3,7 @@ package disk
 import (
 	"fmt"
 
+	volscheduler "github.com/hwameistor/local-storage/pkg/member/controller/scheduler"
 	"github.com/hwameistor/scheduler/pkg/scheduler/interfaces"
 	v1 "k8s.io/api/core/v1"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework"
@@ -14,19 +15,17 @@ type Scheduler struct {
 	csiDriverName    string
 	topoNodeLabelKey string
 
-	enable bool
+	volumeScheduler volscheduler.Scheduler
 }
 
-func NewScheduler(f framework.Handle) interfaces.Scheduler {
+func NewScheduler(f framework.Handle, scheduler volscheduler.Scheduler) interfaces.Scheduler {
 
 	sche := &Scheduler{
-		enable:           false,
 		fHandle:          f,
 		topoNodeLabelKey: "topoKey",
 		csiDriverName:    "disk.hwameistor.io",
+		volumeScheduler:  scheduler,
 	}
-
-	go sche.run()
 
 	return sche
 }
@@ -35,11 +34,8 @@ func (s *Scheduler) CSIDriverName() string {
 	return s.csiDriverName
 }
 
-func (s *Scheduler) run() {
-}
-
-func (s *Scheduler) Filter(boundPVCs []*v1.PersistentVolumeClaim, pendingPVCs []*v1.PersistentVolumeClaim, node *v1.Node) (bool, error) {
-	canSchedule, err := s.filterForBoundPVCs(boundPVCs, node)
+func (s *Scheduler) Filter(lvs []string, pendingPVCs []*v1.PersistentVolumeClaim, node *v1.Node) (bool, error) {
+	canSchedule, err := s.filterForExistingLocalVolumes(lvs, node)
 	if err != nil {
 		return false, err
 	}
@@ -50,24 +46,25 @@ func (s *Scheduler) Filter(boundPVCs []*v1.PersistentVolumeClaim, pendingPVCs []
 	return s.filterForPendingPVCs(pendingPVCs, node)
 }
 
-func (s *Scheduler) filterForBoundPVCs(pvcs []*v1.PersistentVolumeClaim, node *v1.Node) (bool, error) {
-	if len(pvcs) == 0 {
+func (s *Scheduler) filterForExistingLocalVolumes(lvs []string, node *v1.Node) (bool, error) {
+
+	if len(lvs) == 0 {
 		return true, nil
 	}
-	if !s.enable {
-		return false, fmt.Errorf("scheduler is not working for LVM volume")
-	}
+
+	// Bound PVC already has volume created in the cluster. Just check if this node has the expected volume
 
 	return true, nil
 }
 
 func (s *Scheduler) filterForPendingPVCs(pvcs []*v1.PersistentVolumeClaim, node *v1.Node) (bool, error) {
+
 	if len(pvcs) == 0 {
 		return true, nil
 	}
-	if !s.enable {
-		return false, fmt.Errorf("scheduler is not working for LVM volume")
-	}
+
+	// Pending PVC is still waiting for the volume to be created as soon as the node is assigned to the pod.
+	// So, should check if the volume can be allocated on this node or not
 
 	return true, nil
 }

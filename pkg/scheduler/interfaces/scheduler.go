@@ -5,6 +5,6 @@ import (
 )
 
 type Scheduler interface {
-	Filter(boundPVCs []*v1.PersistentVolumeClaim, unboundPVCs []*v1.PersistentVolumeClaim, node *v1.Node) (bool, error)
+	Filter(existingLocalVolume []string, unboundPVCs []*v1.PersistentVolumeClaim, node *v1.Node) (bool, error)
 	CSIDriverName() string
 }
