@@ -8,14 +8,16 @@ The Scheduler is one of important components of the HwameiStor. It is to automat
 
 The Scheduler should be deployed with the HA mode in the cluster, which is a best practice for the production.
 
-### Deploy a Stateful Pod
+### Deploy by Helm Chart
 
-## Development
+Scheduler must work with Local Storage and Local Disk Manager. It's suggested to install by [helm-charts](https://github.com/hwameistor/helm-charts/blob/main/README.md)
 
-### Compile Code
+### Deploy by YAML (For Developing)
 
-### Build Image
+```shell
+    # kubectl apply -f deploy/scheduler.yaml
+```
 
-### Update Vendor
+## Feedbacks
 
-## Community
+Please submit any feedback and issue at: [Issues](https://github.com/hwameistor/scheduler/issues)

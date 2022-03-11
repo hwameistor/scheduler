@@ -5,17 +5,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/hwameistor/scheduler/pkg/scheduler/disk"
-	"github.com/hwameistor/scheduler/pkg/scheduler/interfaces"
-	"github.com/hwameistor/scheduler/pkg/scheduler/lvm"
-
 	localstoragev1alpha1 "github.com/hwameistor/local-storage/pkg/apis/localstorage/v1alpha1"
-	"github.com/hwameistor/local-storage/pkg/member/controller/scheduler"
+	lvmscheduler "github.com/hwameistor/local-storage/pkg/member/controller/scheduler"
 
 	log "github.com/sirupsen/logrus"
-	v1 "k8s.io/api/core/v1"
-	corelister "k8s.io/client-go/listers/core/v1"
-	storagelister "k8s.io/client-go/listers/storage/v1"
+	corev1 "k8s.io/api/core/v1"
+	corev1lister "k8s.io/client-go/listers/core/v1"
+	storagev1lister "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
@@ -23,14 +19,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 )
 
-// Scheduler is to scheduler hwameistor volume
+// VolumeScheduler is to scheduler hwameistor volume
 type Scheduler struct {
-	lvmScheduler  interfaces.Scheduler
-	diskScheduler interfaces.Scheduler
+	lvmScheduler  VolumeScheduler
+	diskScheduler VolumeScheduler
 
-	pvLister  corelister.PersistentVolumeLister
-	pvcLister corelister.PersistentVolumeClaimLister
-	scLister  storagelister.StorageClassLister
+	pvLister  corev1lister.PersistentVolumeLister
+	pvcLister corev1lister.PersistentVolumeClaimLister
+	scLister  storagev1lister.StorageClassLister
 }
 
 // NewDataCache creates a cache instance
@@ -56,15 +52,15 @@ func NewScheduler(f framework.Handle) *Scheduler {
 		log.WithError(err).Fatal("Failed to setup scheme for all resources")
 	}
 
-	cache := mgr.GetCache()
+	hwameiStorCache := mgr.GetCache()
 	ctx := signals.SetupSignalHandler()
 	go func() {
-		cache.Start(ctx)
+		hwameiStorCache.Start(ctx)
 	}()
-	replicaScheduler := scheduler.New(mgr.GetClient(), cache, 1000)
+	replicaScheduler := lvmscheduler.New(mgr.GetClient(), hwameiStorCache, 1000)
 	// wait for cache synced
 	for {
-		if cache.WaitForCacheSync(ctx) {
+		if hwameiStorCache.WaitForCacheSync(ctx) {
 			break
 		}
 		time.Sleep(time.Second * 1)
@@ -72,34 +68,34 @@ func NewScheduler(f framework.Handle) *Scheduler {
 	replicaScheduler.Init()
 
 	return &Scheduler{
-		lvmScheduler:  lvm.NewScheduler(f, replicaScheduler),
-		diskScheduler: disk.NewScheduler(f, replicaScheduler),
+		lvmScheduler:  NewLVMVolumeScheduler(f, replicaScheduler, hwameiStorCache),
+		diskScheduler: NewDiskVolumeScheduler(f, replicaScheduler, hwameiStorCache),
 		pvLister:      f.SharedInformerFactory().Core().V1().PersistentVolumes().Lister(),
 		pvcLister:     f.SharedInformerFactory().Core().V1().PersistentVolumeClaims().Lister(),
 		scLister:      f.SharedInformerFactory().Storage().V1().StorageClasses().Lister(),
 	}
 }
 
-func (s *Scheduler) Filter(pod *v1.Pod, node *v1.Node) (bool, error) {
-	lvmBoundPVCs, lvmUnboundPVCs, diskBoundPVCs, diskUnboundPVCs, err := s.getHwameiStorPVCs(pod)
+func (s *Scheduler) Filter(pod *corev1.Pod, node *corev1.Node) (bool, error) {
+	lvmProvisionedPVCs, lvmNewPVCs, diskProvisionedPVCs, diskNewPVCs, err := s.getHwameiStorPVCs(pod)
 	if err != nil {
 		return false, err
 	}
 	// figure out the existing local volume associated to the PVC, and send it to the scheduler's filter
 	existingLocalVolumes := []string{}
-	for _, pvc := range lvmBoundPVCs {
+	for _, pvc := range lvmProvisionedPVCs {
 		pv, err := s.pvLister.Get(pvc.Spec.VolumeName)
 		if err != nil {
-			log.WithFields(log.Fields{"pvc": pvc.Name, "namespace": pvc.Namespace, "pv": pvc.Spec.VolumeName}).WithError(err).Error("Failed to get a Bound PVC's PV")
+			log.WithFields(log.Fields{"pvc": pvc.Name, "namespace": pvc.Namespace, "pv": pvc.Spec.VolumeName}).WithError(err).Error("Failed to get a Provisioned PVC's PV")
 			return false, err
 		}
 		if pv.Spec.CSI == nil || len(pv.Spec.CSI.VolumeHandle) == 0 {
-			log.WithFields(log.Fields{"pvc": pvc.Name, "namespace": pvc.Namespace, "pv": pvc.Spec.VolumeName}).Error("Wrong PV status of a Bound PVC")
+			log.WithFields(log.Fields{"pvc": pvc.Name, "namespace": pvc.Namespace, "pv": pvc.Spec.VolumeName}).Error("Wrong PV status of a Provisioned PVC")
 			return false, fmt.Errorf("wrong pv")
 		}
 		existingLocalVolumes = append(existingLocalVolumes, pv.Spec.CSI.VolumeHandle)
 	}
-	canSchedule, err := s.lvmScheduler.Filter(existingLocalVolumes, lvmUnboundPVCs, node)
+	canSchedule, err := s.lvmScheduler.Filter(existingLocalVolumes, lvmNewPVCs, node)
 	if err != nil {
 		return false, err
 	}
@@ -109,28 +105,28 @@ func (s *Scheduler) Filter(pod *v1.Pod, node *v1.Node) (bool, error) {
 
 	// figure out the existing local volume associated to the PVC, and send it to the scheduler's filter
 	existingLocalVolumes = []string{}
-	for _, pvc := range diskBoundPVCs {
+	for _, pvc := range diskProvisionedPVCs {
 		pv, err := s.pvLister.Get(pvc.Spec.VolumeName)
 		if err != nil {
-			log.WithFields(log.Fields{"pvc": pvc.Name, "namespace": pvc.Namespace, "pv": pvc.Spec.VolumeName}).WithError(err).Error("Failed to get a Bound PVC's PV")
+			log.WithFields(log.Fields{"pvc": pvc.Name, "namespace": pvc.Namespace, "pv": pvc.Spec.VolumeName}).WithError(err).Error("Failed to get a Provisioned PVC's PV")
 			return false, err
 		}
 		if pv.Spec.CSI == nil || len(pv.Spec.CSI.VolumeHandle) == 0 {
-			log.WithFields(log.Fields{"pvc": pvc.Name, "namespace": pvc.Namespace, "pv": pvc.Spec.VolumeName}).Error("Wrong PV status of a Bound PVC")
+			log.WithFields(log.Fields{"pvc": pvc.Name, "namespace": pvc.Namespace, "pv": pvc.Spec.VolumeName}).Error("Wrong PV status of a Provisioned PVC")
 			return false, fmt.Errorf("wrong pv")
 		}
 		existingLocalVolumes = append(existingLocalVolumes, pv.Spec.CSI.VolumeHandle)
 	}
 
-	return s.diskScheduler.Filter(existingLocalVolumes, diskUnboundPVCs, node)
+	return s.diskScheduler.Filter(existingLocalVolumes, diskNewPVCs, node)
 }
 
-// return: lvmBoundClaims, lvmPendingClaims, diskBoundClaims, diskPendingClaims, error
-func (s *Scheduler) getHwameiStorPVCs(pod *v1.Pod) ([]*v1.PersistentVolumeClaim, []*v1.PersistentVolumeClaim, []*v1.PersistentVolumeClaim, []*v1.PersistentVolumeClaim, error) {
-	lvmBoundClaims := []*v1.PersistentVolumeClaim{}
-	lvmPendingClaims := []*v1.PersistentVolumeClaim{}
-	diskBoundClaims := []*v1.PersistentVolumeClaim{}
-	diskPendingClaims := []*v1.PersistentVolumeClaim{}
+// return: lvmProvisionedClaims, lvmNewClaims, diskProvisionedClaims, diskNewClaims, error
+func (s *Scheduler) getHwameiStorPVCs(pod *corev1.Pod) ([]*corev1.PersistentVolumeClaim, []*corev1.PersistentVolumeClaim, []*corev1.PersistentVolumeClaim, []*corev1.PersistentVolumeClaim, error) {
+	lvmProvisionedClaims := []*corev1.PersistentVolumeClaim{}
+	lvmNewClaims := []*corev1.PersistentVolumeClaim{}
+	diskProvisionedClaims := []*corev1.PersistentVolumeClaim{}
+	diskNewClaims := []*corev1.PersistentVolumeClaim{}
 
 	lvmCSIDriverName := s.lvmScheduler.CSIDriverName()
 	diskCSIDriverName := s.diskScheduler.CSIDriverName()
@@ -142,7 +138,7 @@ func (s *Scheduler) getHwameiStorPVCs(pod *v1.Pod) ([]*v1.PersistentVolumeClaim,
 		pvc, err := s.pvcLister.PersistentVolumeClaims(pod.Namespace).Get(vol.PersistentVolumeClaim.ClaimName)
 		if err != nil {
 			// if pvc can't be found in the cluster, the pod should not be able to be scheduled
-			return lvmBoundClaims, lvmPendingClaims, diskBoundClaims, diskPendingClaims, err
+			return lvmProvisionedClaims, lvmNewClaims, diskProvisionedClaims, diskNewClaims, err
 		}
 		if pvc.Spec.StorageClassName == nil {
 			// should not be the CSI pvc, ignore
@@ -151,27 +147,27 @@ func (s *Scheduler) getHwameiStorPVCs(pod *v1.Pod) ([]*v1.PersistentVolumeClaim,
 		sc, err := s.scLister.Get(*pvc.Spec.StorageClassName)
 		if err != nil {
 			// can't found storageclass in the cluster, the pod should not be able to be scheduled
-			return lvmBoundClaims, lvmPendingClaims, diskBoundClaims, diskPendingClaims, err
+			return lvmProvisionedClaims, lvmNewClaims, diskProvisionedClaims, diskNewClaims, err
 		}
 		if sc.Provisioner == lvmCSIDriverName {
-			if pvc.Status.Phase == v1.ClaimBound {
-				lvmBoundClaims = append(lvmBoundClaims, pvc)
-			} else if pvc.Status.Phase == v1.ClaimPending {
-				lvmPendingClaims = append(lvmPendingClaims, pvc)
+			if pvc.Status.Phase == corev1.ClaimBound {
+				lvmProvisionedClaims = append(lvmProvisionedClaims, pvc)
+			} else if pvc.Status.Phase == corev1.ClaimPending {
+				lvmNewClaims = append(lvmNewClaims, pvc)
 			} else {
-				return lvmBoundClaims, lvmPendingClaims, diskBoundClaims, diskPendingClaims, fmt.Errorf("unhealthy HwameiStor LVM pvc")
+				return lvmProvisionedClaims, lvmNewClaims, diskProvisionedClaims, diskNewClaims, fmt.Errorf("unhealthy HwameiStor LVM pvc")
 			}
 		}
 		if sc.Provisioner == diskCSIDriverName {
-			if pvc.Status.Phase == v1.ClaimBound {
-				diskBoundClaims = append(diskBoundClaims, pvc)
-			} else if pvc.Status.Phase == v1.ClaimPending {
-				diskPendingClaims = append(diskPendingClaims, pvc)
+			if pvc.Status.Phase == corev1.ClaimBound {
+				diskProvisionedClaims = append(diskProvisionedClaims, pvc)
+			} else if pvc.Status.Phase == corev1.ClaimPending {
+				diskNewClaims = append(diskNewClaims, pvc)
 			} else {
-				return lvmBoundClaims, lvmPendingClaims, diskBoundClaims, diskPendingClaims, fmt.Errorf("unhealthy HwameiStor Disk pvc")
+				return lvmProvisionedClaims, lvmNewClaims, diskProvisionedClaims, diskNewClaims, fmt.Errorf("unhealthy HwameiStor Disk pvc")
 			}
 		}
 	}
 
-	return lvmBoundClaims, lvmPendingClaims, diskBoundClaims, diskPendingClaims, nil
+	return lvmProvisionedClaims, lvmNewClaims, diskProvisionedClaims, diskNewClaims, nil
 }
