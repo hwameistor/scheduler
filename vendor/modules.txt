@@ -117,15 +117,14 @@ github.com/grpc-ecosystem/go-grpc-prometheus
 github.com/grpc-ecosystem/grpc-gateway/internal
 github.com/grpc-ecosystem/grpc-gateway/runtime
 github.com/grpc-ecosystem/grpc-gateway/utilities
-# github.com/hwameistor/local-storage v0.1.1
+# github.com/hwameistor/local-storage v0.1.5
 ## explicit; go 1.17
 github.com/hwameistor/local-storage/pkg/apis
-github.com/hwameistor/local-storage/pkg/apis/localstorage/v1alpha1
+github.com/hwameistor/local-storage/pkg/apis/hwameistor/v1alpha1
 github.com/hwameistor/local-storage/pkg/exechelper
 github.com/hwameistor/local-storage/pkg/exechelper/basicexecutor
 github.com/hwameistor/local-storage/pkg/exechelper/nsexecutor
 github.com/hwameistor/local-storage/pkg/member/controller/scheduler
-github.com/hwameistor/local-storage/pkg/member/node/healths
 github.com/hwameistor/local-storage/pkg/member/node/storage
 github.com/hwameistor/local-storage/pkg/utils
 # github.com/imdario/mergo v0.3.12

@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	localstorageapis "github.com/hwameistor/local-storage/pkg/apis"
-	localstoragev1alpha1 "github.com/hwameistor/local-storage/pkg/apis/localstorage/v1alpha1"
+	localstoragev1alpha1 "github.com/hwameistor/local-storage/pkg/apis/hwameistor/v1alpha1"
 	lvmscheduler "github.com/hwameistor/local-storage/pkg/member/controller/scheduler"
 
 	log "github.com/sirupsen/logrus"
@@ -142,7 +142,6 @@ func (s *LVMVolumeScheduler) constructLocalVolumeForPVC(pvc *corev1.PersistentVo
 	localVolume.Spec.PoolName = poolName
 	storage := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
 	localVolume.Spec.RequiredCapacityBytes = storage.Value()
-	localVolume.Spec.Kind = localstoragev1alpha1.VolumeKindLVM
 	replica, _ := strconv.Atoi(sc.Parameters[localstoragev1alpha1.VolumeParameterReplicaNumberKey])
 	localVolume.Spec.ReplicaNumber = int64(replica)
 	return &localVolume, nil

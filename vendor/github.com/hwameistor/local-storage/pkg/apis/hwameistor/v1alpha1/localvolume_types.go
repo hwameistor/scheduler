@@ -17,10 +17,6 @@ type LocalVolumeSpec struct {
 	// PoolName is the name of the storage pool, e.g. LocalStorage_PoolHDD, LocalStorage_PoolSSD, etc..
 	PoolName string `json:"poolName,omitempty"`
 
-	// kind : LVM, DISK, RAM
-	// +kubebuilder:validation:Enum:=LVM;DISK;RAM
-	Kind string `json:"kind"`
-
 	// replica number: 1 - non-HA, 2 - HA, 3 - migration (temp)
 	// +kubebuilder:validation:Minimum:=1
 	// +kubebuilder:validation:Maximum:=3
@@ -30,14 +26,17 @@ type LocalVolumeSpec struct {
 	// +kubebuilder:default:=false
 	Convertible bool `json:"convertible,omitempty"`
 
-	// Striped is to indicate if the volume should be stripped or not.
-	// Stripped volume is for high performance, but with high risk of failure
-	// Striped will take effect only for LVM volume
-	// +kubebuilder:default:=false
-	Striped bool `json:"striped,omitempty"`
-
 	// Accessibility is the topology requirement of the volume. It describes how to locate and distribute the volume replicas
 	Accessibility AccessibilityTopology `json:"accessibility,omitempty"`
+
+	// PersistentVolumeClaimNamespace is the namespace of the associated PVC
+	PersistentVolumeClaimNamespace string `json:"pvcNamespace,omitempty"`
+
+	// PersistentVolumeClaimName is the name of the associated PVC
+	PersistentVolumeClaimName string `json:"pvcName,omitempty"`
+
+	// VolumeGroup is the group name of the local volumes. It is designed for the scheduling and allocating.
+	VolumeGroup string `json:"volumegroup,omitempty"`
 
 	// Config is the configration for the volume replicas
 	// It will be managed by the controller, and watched by all the nodes
@@ -178,7 +177,6 @@ type LocalVolumeStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=localvolumes,scope=Cluster,shortName=lv
 // +kubebuilder:printcolumn:name="pool",type=string,JSONPath=`.spec.poolName`,description="Name of storage pool"
-// +kubebuilder:printcolumn:name="kind",type=string,JSONPath=`.spec.kind`,description="Volume kind"
 // +kubebuilder:printcolumn:name="replicas",type=integer,JSONPath=`.spec.replicaNumber`,description="Number of volume replica"
 // +kubebuilder:printcolumn:name="capacity",type=integer,JSONPath=`.spec.requiredCapacityBytes`,description="Required capacity of the volume"
 // +kubebuilder:printcolumn:name="accessibility",type=string,JSONPath=`.spec.accessibility.node`,description="Accessibility of volume"
