@@ -17,13 +17,6 @@ type LocalStorageNodeSpec struct {
 	StorageIP string `json:"storageIP,omitempty"`
 
 	Topo Topology `json:"topogoly,omitempty"`
-
-	// Supported volume kind: DISK, LVM, RAM
-	// +kubebuilder:validation:Enum:=LVM;DISK;RAM
-	AllowedVolumeKind string `json:"allowedVolumeKind"`
-
-	// +kubebuilder:default:=0
-	AllowdRAMDiskTotalCapacityBytes int64 `json:"allowedRAMDiskTotalCapacityBytes,omitempty"`
 }
 
 // LocalStorageNodeStatus defines the observed state of LocalStorageNode
@@ -41,10 +34,9 @@ type LocalStorageNodeStatus struct {
 
 // NodeConfig defines local storage system configurations
 type NodeConfig struct {
-	Name               string              `json:"name,omitempty"`
-	StorageIP          string              `json:"ip,omitempty"`
-	Topology           *Topology           `json:"topology,omitempty"`
-	LocalStorageConfig *LocalStorageConfig `json:"storage,omitempty"`
+	Name      string    `json:"name,omitempty"`
+	StorageIP string    `json:"ip,omitempty"`
+	Topology  *Topology `json:"topology,omitempty"`
 }
 
 // Topology defines the topology info of Node
@@ -57,15 +49,6 @@ type Topology struct {
 	// Region is a collection of Zones
 	// +kubebuilder:default:=default
 	Region string `json:"region,omitempty"`
-}
-
-// LocalStorageConfig defines backend storage related configurations
-type LocalStorageConfig struct {
-	// +kubebuilder:validation:Enum:=LVM;DISK;RAM
-	VolumeKind string `json:"volumeKind"`
-
-	// +kubebuilder:default:=0
-	RAMDiskTotalCapacity string `json:"ramdiskTotalCapacity,omitempty"`
 }
 
 // LocalPool is storage pool struct
@@ -81,11 +64,6 @@ type LocalPool struct {
 	// +kubebuilder:validation:Enum:=REGULAR
 	// +kubebuilder:default:=REGULAR
 	Type string `json:"type"`
-
-	// Supported volume kind: DISK, LVM, RAM
-	// +kubebuilder:validation:Enum:=LVM;DISK;RAM
-	// +kubebuilder:default:=LVM
-	VolumeKind string `json:"volumeKind"`
 
 	// VG path
 	Path string `json:"path,omitempty"`

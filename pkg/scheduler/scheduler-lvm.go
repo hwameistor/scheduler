@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	localstorageapis "github.com/hwameistor/local-storage/pkg/apis"
-	localstoragev1alpha1 "github.com/hwameistor/local-storage/pkg/apis/localstorage/v1alpha1"
+	localstoragev1alpha1 "github.com/hwameistor/local-storage/pkg/apis/hwameistor/v1alpha1"
 	lvmscheduler "github.com/hwameistor/local-storage/pkg/member/controller/scheduler"
 
 	log "github.com/sirupsen/logrus"

@@ -20,18 +20,8 @@ type LocalVolumeReplicaSpec struct {
 	// NodeName is the assigned node where the volume replica is located
 	NodeName string `json:"nodeName,omitempty"`
 
-	// +kubebuilder:validation:Enum:=LVM;DISK;RAM
-	// +kubebuilder:default:=LVM
-	Kind string `json:"kind"`
-
 	// +kubebuilder:validation:Minimum:=4194304
 	RequiredCapacityBytes int64 `json:"requiredCapacityBytes,omitempty"`
-
-	// Striped is to indecate if the volume should be stripped or not.
-	// Stripped volume is for high performance, but with high risk of failure
-	// Striped will take effect only for LVM volume
-	// +kubebuilder:default:=false
-	Striped bool `json:"striped,omitempty"`
 
 	// Delete is to indicate where the replica should be deleted or not.
 	// It's different from the regular resource delete interface in Kubernetes.
@@ -92,7 +82,6 @@ type HAState struct {
 // LocalVolumeReplica is the Schema for the volumereplicas API
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=localvolumereplicas,scope=Cluster,shortName=lvr
-// +kubebuilder:printcolumn:name="kind",type=string,JSONPath=`.spec.kind`,description="Volume kind"
 // +kubebuilder:printcolumn:name="capacity",type=integer,JSONPath=`.spec.requiredCapacityBytes`,description="Required capacity of the volume replica"
 // +kubebuilder:printcolumn:name="node",type=string,JSONPath=`.spec.nodeName`,description="Node name where the volume replica is located at"
 // +kubebuilder:printcolumn:name="state",type=string,JSONPath=`.status.state`,description="State of the volume replica"
