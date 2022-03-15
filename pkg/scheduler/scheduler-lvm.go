@@ -142,7 +142,6 @@ func (s *LVMVolumeScheduler) constructLocalVolumeForPVC(pvc *corev1.PersistentVo
 	localVolume.Spec.PoolName = poolName
 	storage := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
 	localVolume.Spec.RequiredCapacityBytes = storage.Value()
-	localVolume.Spec.Kind = localstoragev1alpha1.VolumeKindLVM
 	replica, _ := strconv.Atoi(sc.Parameters[localstoragev1alpha1.VolumeParameterReplicaNumberKey])
 	localVolume.Spec.ReplicaNumber = int64(replica)
 	return &localVolume, nil

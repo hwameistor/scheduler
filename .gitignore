@@ -21,4 +21,5 @@ tmp/
 .vscode/
 bin/
 .DS_Store
+.idea
 
