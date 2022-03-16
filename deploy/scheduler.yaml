@@ -47,8 +47,7 @@ spec:
               - key: node-role.kubernetes.io/master
                 operator: Exists
       containers:
-      - command:
-        - kube-scheduler
+      - args:
         - -v=2
         - --bind-address=0.0.0.0
         - --kubeconfig=/etc/kubernetes/scheduler.conf

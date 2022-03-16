@@ -1,5 +1,5 @@
 FROM alpine:3.11
 
-COPY ./_build/kube-scheduler /
+COPY ./_build/scheduler /
 
-ENTRYPOINT [ "/kube-scheduler" ]
+ENTRYPOINT [ "/scheduler" ]
