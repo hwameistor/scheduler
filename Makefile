@@ -23,7 +23,7 @@ CMDS_DIR = ${PROJECT_SOURCE_CODE_DIR}/cmd
 IMAGE_TAG ?= 99.9-dev
 RELEASE_TAG ?= $(shell tagged="$$(git describe --tags --match='v*' --abbrev=0 2> /dev/null)"; if [ "$$tagged" ] && [ "$$(git rev-list -n1 HEAD)" = "$$(git rev-list -n1 $$tagged)" ]; then echo $$tagged; fi)
 
-MODULE_NAME = scheduler
+MODULE_NAME = kube-scheduler
 
 BUILDER_NAME = ${IMAGE_REGISTRY}/${MODULE_NAME}-builder
 BUILDER_TAG = latest
