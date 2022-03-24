@@ -60,14 +60,14 @@ func (p *Plugin) Filter(ctx context.Context, state *framework.CycleState, pod *v
 	allowed, err := p.filter(pod, node.Node())
 	if err != nil {
 		log.WithFields(log.Fields{"pod": pod.Name, "node": node.Node().Name}).WithError(err).Debug("Filtered out the node")
-		return framework.AsStatus(err)
+		return framework.NewStatus(framework.Unschedulable, err.Error())
 	}
 	if allowed {
 		log.WithFields(log.Fields{"pod": pod.Name, "node": node.Node().Name}).Debug("Filtered in the node")
 		return framework.NewStatus(framework.Success, "can be scheduled on this node")
 	}
 	log.WithFields(log.Fields{"pod": pod.Name, "node": node.Node().Name}).Debug("Filtered out the node")
-	return framework.AsStatus(fmt.Errorf("can't be scheduled on this node"))
+	return framework.NewStatus(framework.Unschedulable, err.Error())
 }
 
 func (p *Plugin) filter(pod *v1.Pod, node *v1.Node) (bool, error) {
