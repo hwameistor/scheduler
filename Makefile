@@ -80,3 +80,7 @@ clean:
 
 unit-test:
 	bash test/unit-test.sh
+
+.PHONY: generate
+generate:
+	bash test/mock-generate.sh pkg

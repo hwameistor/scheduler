@@ -95,6 +95,8 @@ func (s *LVMVolumeScheduler) filterForExistingLocalVolumes(lvs []string, node *c
 
 func (s *LVMVolumeScheduler) filterForNewPVCs(pvcs []*corev1.PersistentVolumeClaim, node *corev1.Node) (bool, error) {
 
+	fmt.Printf("debug filterForNewPVCs pvcs = %+v", pvcs)
+
 	if len(pvcs) == 0 {
 		return true, nil
 	}
@@ -102,6 +104,7 @@ func (s *LVMVolumeScheduler) filterForNewPVCs(pvcs []*corev1.PersistentVolumeCla
 	lvGroup := []*localstoragev1alpha1.LocalVolume{}
 	for i := range pvcs {
 		lv, err := s.constructLocalVolumeForPVC(pvcs[i])
+		fmt.Printf("debug constructLocalVolumeForPVC lv = %+v, pvcs[i] = %+v", lv, pvcs[i])
 		if err != nil {
 			return false, err
 		}
@@ -110,6 +113,7 @@ func (s *LVMVolumeScheduler) filterForNewPVCs(pvcs []*corev1.PersistentVolumeCla
 	// currently, just handle only one PVC.
 
 	nodeCandidates, err := s.replicaScheduler.GetNodeCandidates(lvGroup[0])
+	fmt.Printf("debug filterForNewPVCs nodeCandidates = %+v, node.Name= %+v, lvGroup[0] = %+v", nodeCandidates, node.Name, lvGroup[0])
 	if err != nil {
 		return false, err
 	}
