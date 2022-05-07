@@ -22,7 +22,7 @@ import (
 	"time"
 )
 
-var _ = ginkgo.Describe("test scheduler", ginkgo.Label("test2"), func() {
+var _ = ginkgo.Describe("test scheduler", ginkgo.Label("test3"), func() {
 
 	f := framework.NewDefaultFramework(apis.AddToScheme)
 	client := f.GetClient()
