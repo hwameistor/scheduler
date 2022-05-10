@@ -84,3 +84,8 @@ unit-test:
 .PHONY: generate
 generate:
 	bash test/mock-generate.sh pkg
+
+e2e-test:
+	make image
+	docker push ${IMAGE_NAME}:${IMAGE_TAG}
+	bash test/e2e-test.sh
