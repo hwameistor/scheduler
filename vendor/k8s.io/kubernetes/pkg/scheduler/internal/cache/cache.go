@@ -18,16 +18,17 @@ package cache
 
 import (
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/klog"
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/metrics"
+	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 )
 
 var (
@@ -48,7 +49,7 @@ func New(ttl time.Duration, stop <-chan struct{}) Cache {
 // linked list. When a NodeInfo is updated, it goes to the head of the list.
 // The items closer to the head are the most recently updated items.
 type nodeInfoListItem struct {
-	info *framework.NodeInfo
+	info *schedulernodeinfo.NodeInfo
 	next *nodeInfoListItem
 	prev *nodeInfoListItem
 }
@@ -62,7 +63,7 @@ type schedulerCache struct {
 	mu sync.RWMutex
 	// a set of assumed pod keys.
 	// The key could further be used to get an entry in podStates.
-	assumedPods sets.String
+	assumedPods map[string]bool
 	// a map from pod key to podState.
 	podStates map[string]*podState
 	nodes     map[string]*nodeInfoListItem
@@ -90,8 +91,8 @@ type imageState struct {
 }
 
 // createImageStateSummary returns a summarizing snapshot of the given image's state.
-func (cache *schedulerCache) createImageStateSummary(state *imageState) *framework.ImageStateSummary {
-	return &framework.ImageStateSummary{
+func (cache *schedulerCache) createImageStateSummary(state *imageState) *schedulernodeinfo.ImageStateSummary {
+	return &schedulernodeinfo.ImageStateSummary{
 		Size:     state.size,
 		NumNodes: len(state.nodes),
 	}
@@ -105,14 +106,14 @@ func newSchedulerCache(ttl, period time.Duration, stop <-chan struct{}) *schedul
 
 		nodes:       make(map[string]*nodeInfoListItem),
 		nodeTree:    newNodeTree(nil),
-		assumedPods: make(sets.String),
+		assumedPods: make(map[string]bool),
 		podStates:   make(map[string]*podState),
 		imageStates: make(map[string]*imageState),
 	}
 }
 
 // newNodeInfoListItem initializes a new nodeInfoListItem.
-func newNodeInfoListItem(ni *framework.NodeInfo) *nodeInfoListItem {
+func newNodeInfoListItem(ni *schedulernodeinfo.NodeInfo) *nodeInfoListItem {
 	return &nodeInfoListItem{
 		info: ni,
 	}
@@ -124,7 +125,7 @@ func newNodeInfoListItem(ni *framework.NodeInfo) *nodeInfoListItem {
 func (cache *schedulerCache) moveNodeInfoToHead(name string) {
 	ni, ok := cache.nodes[name]
 	if !ok {
-		klog.ErrorS(nil, "No node info with given name found in the cache", "node", klog.KRef("", name))
+		klog.Errorf("No NodeInfo with name %v found in the cache", name)
 		return
 	}
 	// if the node info list item is already at the head, we are done.
@@ -152,7 +153,7 @@ func (cache *schedulerCache) moveNodeInfoToHead(name string) {
 func (cache *schedulerCache) removeNodeInfoFromList(name string) {
 	ni, ok := cache.nodes[name]
 	if !ok {
-		klog.ErrorS(nil, "No node info with given name found in the cache", "node", klog.KRef("", name))
+		klog.Errorf("No NodeInfo with name %v found in the cache", name)
 		return
 	}
 
@@ -169,7 +170,7 @@ func (cache *schedulerCache) removeNodeInfoFromList(name string) {
 	delete(cache.nodes, name)
 }
 
-// Dump produces a dump of the current scheduler cache. This is used for
+// Snapshot takes a snapshot of the current scheduler cache. This is used for
 // debugging purposes only and shouldn't be confused with UpdateSnapshot
 // function.
 // This method is expensive, and should be only used in non-critical path.
@@ -177,14 +178,19 @@ func (cache *schedulerCache) Dump() *Dump {
 	cache.mu.RLock()
 	defer cache.mu.RUnlock()
 
-	nodes := make(map[string]*framework.NodeInfo, len(cache.nodes))
+	nodes := make(map[string]*schedulernodeinfo.NodeInfo, len(cache.nodes))
 	for k, v := range cache.nodes {
 		nodes[k] = v.info.Clone()
 	}
 
+	assumedPods := make(map[string]bool, len(cache.assumedPods))
+	for k, v := range cache.assumedPods {
+		assumedPods[k] = v
+	}
+
 	return &Dump{
 		Nodes:       nodes,
-		AssumedPods: cache.assumedPods.Union(nil),
+		AssumedPods: assumedPods,
 	}
 }
 
@@ -197,6 +203,7 @@ func (cache *schedulerCache) Dump() *Dump {
 func (cache *schedulerCache) UpdateSnapshot(nodeSnapshot *Snapshot) error {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
+	balancedVolumesEnabled := utilfeature.DefaultFeatureGate.Enabled(features.BalanceAttachedNodeVolumes)
 
 	// Get the last generation of the snapshot.
 	snapshotGeneration := nodeSnapshot.generation
@@ -216,25 +223,29 @@ func (cache *schedulerCache) UpdateSnapshot(nodeSnapshot *Snapshot) error {
 	// Start from the head of the NodeInfo doubly linked list and update snapshot
 	// of NodeInfos updated after the last snapshot.
 	for node := cache.headNode; node != nil; node = node.next {
-		if node.info.Generation <= snapshotGeneration {
+		if node.info.GetGeneration() <= snapshotGeneration {
 			// all the nodes are updated before the existing snapshot. We are done.
 			break
+		}
+		if balancedVolumesEnabled && node.info.TransientInfo != nil {
+			// Transient scheduler info is reset here.
+			node.info.TransientInfo.ResetTransientSchedulerInfo()
 		}
 		if np := node.info.Node(); np != nil {
 			existing, ok := nodeSnapshot.nodeInfoMap[np.Name]
 			if !ok {
 				updateAllLists = true
-				existing = &framework.NodeInfo{}
+				existing = &schedulernodeinfo.NodeInfo{}
 				nodeSnapshot.nodeInfoMap[np.Name] = existing
 			}
 			clone := node.info.Clone()
 			// We track nodes that have pods with affinity, here we check if this node changed its
 			// status from having pods with affinity to NOT having pods with affinity or the other
 			// way around.
-			if (len(existing.PodsWithAffinity) > 0) != (len(clone.PodsWithAffinity) > 0) {
+			if (len(existing.PodsWithAffinity()) > 0) != (len(clone.PodsWithAffinity()) > 0) {
 				updateNodesHavePodsWithAffinity = true
 			}
-			if (len(existing.PodsWithRequiredAntiAffinity) > 0) != (len(clone.PodsWithRequiredAntiAffinity) > 0) {
+			if (len(existing.PodsWithRequiredAntiAffinity()) > 0) != (len(clone.PodsWithRequiredAntiAffinity()) > 0) {
 				updateNodesHavePodsWithRequiredAntiAffinity = true
 			}
 			// We need to preserve the original pointer of the NodeInfo struct since it
@@ -244,7 +255,7 @@ func (cache *schedulerCache) UpdateSnapshot(nodeSnapshot *Snapshot) error {
 	}
 	// Update the snapshot generation with the latest NodeInfo generation.
 	if cache.headNode != nil {
-		nodeSnapshot.generation = cache.headNode.info.Generation
+		nodeSnapshot.generation = cache.headNode.info.GetGeneration()
 	}
 
 	// Comparing to pods in nodeTree.
@@ -265,7 +276,7 @@ func (cache *schedulerCache) UpdateSnapshot(nodeSnapshot *Snapshot) error {
 			", trying to recover",
 			len(nodeSnapshot.nodeInfoList), cache.nodeTree.numNodes,
 			len(nodeSnapshot.nodeInfoMap), len(cache.nodes))
-		klog.ErrorS(nil, errMsg)
+		klog.Error(errMsg)
 		// We will try to recover by re-creating the lists for the next scheduling cycle, but still return an
 		// error to surface the problem, the error will likely cause a failure to the current scheduling cycle.
 		cache.updateNodeInfoSnapshotList(nodeSnapshot, true)
@@ -276,35 +287,33 @@ func (cache *schedulerCache) UpdateSnapshot(nodeSnapshot *Snapshot) error {
 }
 
 func (cache *schedulerCache) updateNodeInfoSnapshotList(snapshot *Snapshot, updateAll bool) {
-	snapshot.havePodsWithAffinityNodeInfoList = make([]*framework.NodeInfo, 0, cache.nodeTree.numNodes)
-	snapshot.havePodsWithRequiredAntiAffinityNodeInfoList = make([]*framework.NodeInfo, 0, cache.nodeTree.numNodes)
+	snapshot.havePodsWithAffinityNodeInfoList = make([]*schedulernodeinfo.NodeInfo, 0, cache.nodeTree.numNodes)
+	snapshot.havePodsWithRequiredAntiAffinityNodeInfoList = make([]*schedulernodeinfo.NodeInfo, 0, cache.nodeTree.numNodes)
 	if updateAll {
 		// Take a snapshot of the nodes order in the tree
-		snapshot.nodeInfoList = make([]*framework.NodeInfo, 0, cache.nodeTree.numNodes)
-		nodesList, err := cache.nodeTree.list()
-		if err != nil {
-			klog.ErrorS(err, "Error occurred while retrieving the list of names of the nodes from node tree")
-		}
-		for _, nodeName := range nodesList {
-			if nodeInfo := snapshot.nodeInfoMap[nodeName]; nodeInfo != nil {
-				snapshot.nodeInfoList = append(snapshot.nodeInfoList, nodeInfo)
-				if len(nodeInfo.PodsWithAffinity) > 0 {
-					snapshot.havePodsWithAffinityNodeInfoList = append(snapshot.havePodsWithAffinityNodeInfoList, nodeInfo)
+		snapshot.nodeInfoList = make([]*schedulernodeinfo.NodeInfo, 0, cache.nodeTree.numNodes)
+		cache.nodeTree.resetExhausted()
+		for i := 0; i < cache.nodeTree.numNodes; i++ {
+			nodeName := cache.nodeTree.next()
+			if n := snapshot.nodeInfoMap[nodeName]; n != nil {
+				snapshot.nodeInfoList = append(snapshot.nodeInfoList, n)
+				if len(n.PodsWithAffinity()) > 0 {
+					snapshot.havePodsWithAffinityNodeInfoList = append(snapshot.havePodsWithAffinityNodeInfoList, n)
 				}
-				if len(nodeInfo.PodsWithRequiredAntiAffinity) > 0 {
-					snapshot.havePodsWithRequiredAntiAffinityNodeInfoList = append(snapshot.havePodsWithRequiredAntiAffinityNodeInfoList, nodeInfo)
+				if len(n.PodsWithRequiredAntiAffinity()) > 0 {
+					snapshot.havePodsWithRequiredAntiAffinityNodeInfoList = append(snapshot.havePodsWithRequiredAntiAffinityNodeInfoList, n)
 				}
 			} else {
-				klog.ErrorS(nil, "Node exists in nodeTree but not in NodeInfoMap, this should not happen", "node", klog.KRef("", nodeName))
+				klog.Errorf("node %q exist in nodeTree but not in NodeInfoMap, this should not happen.", nodeName)
 			}
 		}
 	} else {
-		for _, nodeInfo := range snapshot.nodeInfoList {
-			if len(nodeInfo.PodsWithAffinity) > 0 {
-				snapshot.havePodsWithAffinityNodeInfoList = append(snapshot.havePodsWithAffinityNodeInfoList, nodeInfo)
+		for _, n := range snapshot.nodeInfoList {
+			if len(n.PodsWithAffinity()) > 0 {
+				snapshot.havePodsWithAffinityNodeInfoList = append(snapshot.havePodsWithAffinityNodeInfoList, n)
 			}
-			if len(nodeInfo.PodsWithRequiredAntiAffinity) > 0 {
-				snapshot.havePodsWithRequiredAntiAffinityNodeInfoList = append(snapshot.havePodsWithRequiredAntiAffinityNodeInfoList, nodeInfo)
+			if len(n.PodsWithRequiredAntiAffinity()) > 0 {
+				snapshot.havePodsWithRequiredAntiAffinityNodeInfoList = append(snapshot.havePodsWithRequiredAntiAffinityNodeInfoList, n)
 			}
 		}
 	}
@@ -324,14 +333,6 @@ func (cache *schedulerCache) removeDeletedNodesFromSnapshot(snapshot *Snapshot) 
 	}
 }
 
-// NodeCount returns the number of nodes in the cache.
-// DO NOT use outside of tests.
-func (cache *schedulerCache) NodeCount() int {
-	cache.mu.RLock()
-	defer cache.mu.RUnlock()
-	return len(cache.nodes)
-}
-
 // PodCount returns the number of pods in the cache (including those from deleted nodes).
 // DO NOT use outside of tests.
 func (cache *schedulerCache) PodCount() (int, error) {
@@ -340,15 +341,19 @@ func (cache *schedulerCache) PodCount() (int, error) {
 	// podFilter is expected to return true for most or all of the pods. We
 	// can avoid expensive array growth without wasting too much memory by
 	// pre-allocating capacity.
+	maxSize := 0
+	for _, n := range cache.nodes {
+		maxSize += len(n.info.Pods())
+	}
 	count := 0
 	for _, n := range cache.nodes {
-		count += len(n.info.Pods)
+		count += len(n.info.Pods())
 	}
 	return count, nil
 }
 
 func (cache *schedulerCache) AssumePod(pod *v1.Pod) error {
-	key, err := framework.GetPodKey(pod)
+	key, err := schedulernodeinfo.GetPodKey(pod)
 	if err != nil {
 		return err
 	}
@@ -364,7 +369,7 @@ func (cache *schedulerCache) AssumePod(pod *v1.Pod) error {
 		pod: pod,
 	}
 	cache.podStates[key] = ps
-	cache.assumedPods.Insert(key)
+	cache.assumedPods[key] = true
 	return nil
 }
 
@@ -374,7 +379,7 @@ func (cache *schedulerCache) FinishBinding(pod *v1.Pod) error {
 
 // finishBinding exists to make tests determinitistic by injecting now as an argument
 func (cache *schedulerCache) finishBinding(pod *v1.Pod, now time.Time) error {
-	key, err := framework.GetPodKey(pod)
+	key, err := schedulernodeinfo.GetPodKey(pod)
 	if err != nil {
 		return err
 	}
@@ -382,9 +387,9 @@ func (cache *schedulerCache) finishBinding(pod *v1.Pod, now time.Time) error {
 	cache.mu.RLock()
 	defer cache.mu.RUnlock()
 
-	klog.V(5).InfoS("Finished binding for pod, can be expired", "pod", klog.KObj(pod))
+	klog.V(5).Infof("Finished binding for pod %v. Can be expired.", key)
 	currState, ok := cache.podStates[key]
-	if ok && cache.assumedPods.Has(key) {
+	if ok && cache.assumedPods[key] {
 		dl := now.Add(cache.ttl)
 		currState.bindingFinished = true
 		currState.deadline = &dl
@@ -393,7 +398,7 @@ func (cache *schedulerCache) finishBinding(pod *v1.Pod, now time.Time) error {
 }
 
 func (cache *schedulerCache) ForgetPod(pod *v1.Pod) error {
-	key, err := framework.GetPodKey(pod)
+	key, err := schedulernodeinfo.GetPodKey(pod)
 	if err != nil {
 		return err
 	}
@@ -408,7 +413,7 @@ func (cache *schedulerCache) ForgetPod(pod *v1.Pod) error {
 
 	switch {
 	// Only assumed pod can be forgotten.
-	case ok && cache.assumedPods.Has(key):
+	case ok && cache.assumedPods[key]:
 		err := cache.removePod(pod)
 		if err != nil {
 			return err
@@ -425,7 +430,7 @@ func (cache *schedulerCache) ForgetPod(pod *v1.Pod) error {
 func (cache *schedulerCache) addPod(pod *v1.Pod) {
 	n, ok := cache.nodes[pod.Spec.NodeName]
 	if !ok {
-		n = newNodeInfoListItem(framework.NewNodeInfo())
+		n = newNodeInfoListItem(schedulernodeinfo.NewNodeInfo())
 		cache.nodes[pod.Spec.NodeName] = n
 	}
 	n.info.AddPod(pod)
@@ -448,13 +453,13 @@ func (cache *schedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 func (cache *schedulerCache) removePod(pod *v1.Pod) error {
 	n, ok := cache.nodes[pod.Spec.NodeName]
 	if !ok {
-		klog.ErrorS(nil, "Node not found when trying to remove pod", "node", klog.KRef("", pod.Spec.NodeName), "pod", klog.KObj(pod))
+		klog.Errorf("node %v not found when trying to remove pod %v", pod.Spec.NodeName, pod.Name)
 		return nil
 	}
 	if err := n.info.RemovePod(pod); err != nil {
 		return err
 	}
-	if len(n.info.Pods) == 0 && n.info.Node() == nil {
+	if len(n.info.Pods()) == 0 && n.info.Node() == nil {
 		cache.removeNodeInfoFromList(pod.Spec.NodeName)
 	} else {
 		cache.moveNodeInfoToHead(pod.Spec.NodeName)
@@ -463,7 +468,7 @@ func (cache *schedulerCache) removePod(pod *v1.Pod) error {
 }
 
 func (cache *schedulerCache) AddPod(pod *v1.Pod) error {
-	key, err := framework.GetPodKey(pod)
+	key, err := schedulernodeinfo.GetPodKey(pod)
 	if err != nil {
 		return err
 	}
@@ -473,13 +478,13 @@ func (cache *schedulerCache) AddPod(pod *v1.Pod) error {
 
 	currState, ok := cache.podStates[key]
 	switch {
-	case ok && cache.assumedPods.Has(key):
+	case ok && cache.assumedPods[key]:
 		if currState.pod.Spec.NodeName != pod.Spec.NodeName {
 			// The pod was added to a different node than it was assumed to.
-			klog.InfoS("Pod was added to a different node than it was assumed", "pod", klog.KObj(pod), "assumedNode", klog.KRef("", pod.Spec.NodeName), "currentNode", klog.KRef("", currState.pod.Spec.NodeName))
+			klog.Warningf("Pod %v was assumed to be on %v but got added to %v", key, pod.Spec.NodeName, currState.pod.Spec.NodeName)
 			// Clean this up.
 			if err = cache.removePod(currState.pod); err != nil {
-				klog.ErrorS(err, "Error occurred while removing pod")
+				klog.Errorf("removing pod error: %v", err)
 			}
 			cache.addPod(pod)
 		}
@@ -500,7 +505,7 @@ func (cache *schedulerCache) AddPod(pod *v1.Pod) error {
 }
 
 func (cache *schedulerCache) UpdatePod(oldPod, newPod *v1.Pod) error {
-	key, err := framework.GetPodKey(oldPod)
+	key, err := schedulernodeinfo.GetPodKey(oldPod)
 	if err != nil {
 		return err
 	}
@@ -512,11 +517,10 @@ func (cache *schedulerCache) UpdatePod(oldPod, newPod *v1.Pod) error {
 	switch {
 	// An assumed pod won't have Update/Remove event. It needs to have Add event
 	// before Update event, in which case the state would change from Assumed to Added.
-	case ok && !cache.assumedPods.Has(key):
+	case ok && !cache.assumedPods[key]:
 		if currState.pod.Spec.NodeName != newPod.Spec.NodeName {
-			klog.ErrorS(nil, "Pod updated on a different node than previously added to", "pod", klog.KObj(oldPod))
-			klog.ErrorS(nil, "SchedulerCache is corrupted and can badly affect scheduling decisions")
-			os.Exit(1)
+			klog.Errorf("Pod %v updated on a different node than previously added to.", key)
+			klog.Fatalf("Schedulercache is corrupted and can badly affect scheduling decisions")
 		}
 		if err := cache.updatePod(oldPod, newPod); err != nil {
 			return err
@@ -529,7 +533,7 @@ func (cache *schedulerCache) UpdatePod(oldPod, newPod *v1.Pod) error {
 }
 
 func (cache *schedulerCache) RemovePod(pod *v1.Pod) error {
-	key, err := framework.GetPodKey(pod)
+	key, err := schedulernodeinfo.GetPodKey(pod)
 	if err != nil {
 		return err
 	}
@@ -539,24 +543,26 @@ func (cache *schedulerCache) RemovePod(pod *v1.Pod) error {
 
 	currState, ok := cache.podStates[key]
 	switch {
-	case ok:
+	// An assumed pod won't have Delete/Remove event. It needs to have Add event
+	// before Remove event, in which case the state would change from Assumed to Added.
+	case ok && !cache.assumedPods[key]:
 		if currState.pod.Spec.NodeName != pod.Spec.NodeName {
-			klog.ErrorS(nil, "Pod was added to a different node than it was assumed", "pod", klog.KObj(pod), "assumedNode", klog.KRef("", pod.Spec.NodeName), "currentNode", klog.KRef("", currState.pod.Spec.NodeName))
-			if pod.Spec.NodeName != "" {
-				// An empty NodeName is possible when the scheduler misses a Delete
-				// event and it gets the last known state from the informer cache.
-				klog.ErrorS(nil, "SchedulerCache is corrupted and can badly affect scheduling decisions")
-				os.Exit(1)
-			}
+			klog.Errorf("Pod %v was assumed to be on %v but got added to %v", key, pod.Spec.NodeName, currState.pod.Spec.NodeName)
+			klog.Fatalf("Schedulercache is corrupted and can badly affect scheduling decisions")
 		}
-		return cache.expirePod(key, currState)
+		err := cache.removePod(currState.pod)
+		if err != nil {
+			return err
+		}
+		delete(cache.podStates, key)
 	default:
 		return fmt.Errorf("pod %v is not found in scheduler cache, so cannot be removed from it", key)
 	}
+	return nil
 }
 
 func (cache *schedulerCache) IsAssumedPod(pod *v1.Pod) (bool, error) {
-	key, err := framework.GetPodKey(pod)
+	key, err := schedulernodeinfo.GetPodKey(pod)
 	if err != nil {
 		return false, err
 	}
@@ -564,13 +570,17 @@ func (cache *schedulerCache) IsAssumedPod(pod *v1.Pod) (bool, error) {
 	cache.mu.RLock()
 	defer cache.mu.RUnlock()
 
-	return cache.assumedPods.Has(key), nil
+	b, found := cache.assumedPods[key]
+	if !found {
+		return false, nil
+	}
+	return b, nil
 }
 
 // GetPod might return a pod for which its node has already been deleted from
 // the main cache. This is useful to properly process pod update events.
 func (cache *schedulerCache) GetPod(pod *v1.Pod) (*v1.Pod, error) {
-	key, err := framework.GetPodKey(pod)
+	key, err := schedulernodeinfo.GetPodKey(pod)
 	if err != nil {
 		return nil, err
 	}
@@ -586,13 +596,13 @@ func (cache *schedulerCache) GetPod(pod *v1.Pod) (*v1.Pod, error) {
 	return podState.pod, nil
 }
 
-func (cache *schedulerCache) AddNode(node *v1.Node) *framework.NodeInfo {
+func (cache *schedulerCache) AddNode(node *v1.Node) error {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
 	n, ok := cache.nodes[node.Name]
 	if !ok {
-		n = newNodeInfoListItem(framework.NewNodeInfo())
+		n = newNodeInfoListItem(schedulernodeinfo.NewNodeInfo())
 		cache.nodes[node.Name] = n
 	} else {
 		cache.removeNodeImageStates(n.info.Node())
@@ -601,17 +611,16 @@ func (cache *schedulerCache) AddNode(node *v1.Node) *framework.NodeInfo {
 
 	cache.nodeTree.addNode(node)
 	cache.addNodeImageStates(node, n.info)
-	n.info.SetNode(node)
-	return n.info.Clone()
+	return n.info.SetNode(node)
 }
 
-func (cache *schedulerCache) UpdateNode(oldNode, newNode *v1.Node) *framework.NodeInfo {
+func (cache *schedulerCache) UpdateNode(oldNode, newNode *v1.Node) error {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
 	n, ok := cache.nodes[newNode.Name]
 	if !ok {
-		n = newNodeInfoListItem(framework.NewNodeInfo())
+		n = newNodeInfoListItem(schedulernodeinfo.NewNodeInfo())
 		cache.nodes[newNode.Name] = n
 		cache.nodeTree.addNode(newNode)
 	} else {
@@ -621,8 +630,7 @@ func (cache *schedulerCache) UpdateNode(oldNode, newNode *v1.Node) *framework.No
 
 	cache.nodeTree.updateNode(oldNode, newNode)
 	cache.addNodeImageStates(newNode, n.info)
-	n.info.SetNode(newNode)
-	return n.info.Clone()
+	return n.info.SetNode(newNode)
 }
 
 // RemoveNode removes a node from the cache's tree.
@@ -644,7 +652,7 @@ func (cache *schedulerCache) RemoveNode(node *v1.Node) error {
 	// We can't do it unconditionally, because notifications about pods are delivered
 	// in a different watch, and thus can potentially be observed later, even though
 	// they happened before node removal.
-	if len(n.info.Pods) == 0 {
+	if len(n.info.Pods()) == 0 {
 		cache.removeNodeInfoFromList(node.Name)
 	} else {
 		cache.moveNodeInfoToHead(node.Name)
@@ -658,8 +666,8 @@ func (cache *schedulerCache) RemoveNode(node *v1.Node) error {
 
 // addNodeImageStates adds states of the images on given node to the given nodeInfo and update the imageStates in
 // scheduler cache. This function assumes the lock to scheduler cache has been acquired.
-func (cache *schedulerCache) addNodeImageStates(node *v1.Node, nodeInfo *framework.NodeInfo) {
-	newSum := make(map[string]*framework.ImageStateSummary)
+func (cache *schedulerCache) addNodeImageStates(node *v1.Node, nodeInfo *schedulernodeinfo.NodeInfo) {
+	newSum := make(map[string]*schedulernodeinfo.ImageStateSummary)
 
 	for _, image := range node.Status.Images {
 		for _, name := range image.Names {
@@ -680,7 +688,7 @@ func (cache *schedulerCache) addNodeImageStates(node *v1.Node, nodeInfo *framewo
 			}
 		}
 	}
-	nodeInfo.ImageStates = newSum
+	nodeInfo.SetImageStates(newSum)
 }
 
 // removeNodeImageStates removes the given node record from image entries having the node
@@ -726,18 +734,17 @@ func (cache *schedulerCache) cleanupAssumedPods(now time.Time) {
 	for key := range cache.assumedPods {
 		ps, ok := cache.podStates[key]
 		if !ok {
-			klog.ErrorS(nil, "Key found in assumed set but not in podStates, potentially a logical error")
-			os.Exit(1)
+			klog.Fatal("Key found in assumed set but not in podStates. Potentially a logical error.")
 		}
 		if !ps.bindingFinished {
-			klog.V(5).InfoS("Could not expire cache for pod as binding is still in progress",
-				"pod", klog.KObj(ps.pod))
+			klog.V(3).Infof("Couldn't expire cache for pod %v/%v. Binding is still in progress.",
+				ps.pod.Namespace, ps.pod.Name)
 			continue
 		}
 		if now.After(*ps.deadline) {
-			klog.InfoS("Pod expired", "pod", klog.KObj(ps.pod))
+			klog.Warningf("Pod %s/%s expired", ps.pod.Namespace, ps.pod.Name)
 			if err := cache.expirePod(key, ps); err != nil {
-				klog.ErrorS(err, "ExpirePod failed", "pod", klog.KObj(ps.pod))
+				klog.Errorf("ExpirePod failed for %s: %v", key, err)
 			}
 		}
 	}

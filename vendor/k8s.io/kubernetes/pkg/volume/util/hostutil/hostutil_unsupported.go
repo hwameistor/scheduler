@@ -1,4 +1,3 @@
-//go:build !linux && !windows
 // +build !linux,!windows
 
 /*
@@ -23,7 +22,7 @@ import (
 	"errors"
 	"os"
 
-	"k8s.io/mount-utils"
+	"k8s.io/utils/mount"
 )
 
 // HostUtil is an HostUtils implementation that allows compilation on

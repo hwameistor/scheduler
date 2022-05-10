@@ -18,13 +18,12 @@ package queuesort
 
 import (
 	"k8s.io/apimachinery/pkg/runtime"
-	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/names"
+	"k8s.io/kubernetes/pkg/api/v1/pod"
+	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 )
 
 // Name is the name of the plugin used in the plugin registry and configurations.
-const Name = names.PrioritySort
+const Name = "PrioritySort"
 
 // PrioritySort is a plugin that implements Priority based sorting.
 type PrioritySort struct{}
@@ -38,14 +37,14 @@ func (pl *PrioritySort) Name() string {
 
 // Less is the function used by the activeQ heap algorithm to sort pods.
 // It sorts pods based on their priority. When priorities are equal, it uses
-// PodQueueInfo.timestamp.
-func (pl *PrioritySort) Less(pInfo1, pInfo2 *framework.QueuedPodInfo) bool {
-	p1 := corev1helpers.PodPriority(pInfo1.Pod)
-	p2 := corev1helpers.PodPriority(pInfo2.Pod)
+// PodInfo.timestamp.
+func (pl *PrioritySort) Less(pInfo1, pInfo2 *framework.PodInfo) bool {
+	p1 := pod.GetPodPriority(pInfo1.Pod)
+	p2 := pod.GetPodPriority(pInfo2.Pod)
 	return (p1 > p2) || (p1 == p2 && pInfo1.Timestamp.Before(pInfo2.Timestamp))
 }
 
 // New initializes a new plugin and returns it.
-func New(_ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
+func New(plArgs *runtime.Unknown, handle framework.FrameworkHandle) (framework.Plugin, error) {
 	return &PrioritySort{}, nil
 }

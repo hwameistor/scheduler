@@ -52,14 +52,13 @@ func (cml *ConfigMapLock) Get(ctx context.Context) (*LeaderElectionRecord, []byt
 	if cml.cm.Annotations == nil {
 		cml.cm.Annotations = make(map[string]string)
 	}
-	recordStr, found := cml.cm.Annotations[LeaderElectionRecordAnnotationKey]
-	recordBytes := []byte(recordStr)
+	recordBytes, found := cml.cm.Annotations[LeaderElectionRecordAnnotationKey]
 	if found {
-		if err := json.Unmarshal(recordBytes, &record); err != nil {
+		if err := json.Unmarshal([]byte(recordBytes), &record); err != nil {
 			return nil, nil, err
 		}
 	}
-	return &record, recordBytes, nil
+	return &record, []byte(recordBytes), nil
 }
 
 // Create attempts to create a LeaderElectionRecord annotation
@@ -89,16 +88,9 @@ func (cml *ConfigMapLock) Update(ctx context.Context, ler LeaderElectionRecord) 
 	if err != nil {
 		return err
 	}
-	if cml.cm.Annotations == nil {
-		cml.cm.Annotations = make(map[string]string)
-	}
 	cml.cm.Annotations[LeaderElectionRecordAnnotationKey] = string(recordBytes)
-	cm, err := cml.Client.ConfigMaps(cml.ConfigMapMeta.Namespace).Update(ctx, cml.cm, metav1.UpdateOptions{})
-	if err != nil {
-		return err
-	}
-	cml.cm = cm
-	return nil
+	cml.cm, err = cml.Client.ConfigMaps(cml.ConfigMapMeta.Namespace).Update(ctx, cml.cm, metav1.UpdateOptions{})
+	return err
 }
 
 // RecordEvent in leader election while adding meta-data
@@ -107,11 +99,7 @@ func (cml *ConfigMapLock) RecordEvent(s string) {
 		return
 	}
 	events := fmt.Sprintf("%v %v", cml.LockConfig.Identity, s)
-	subject := &v1.ConfigMap{ObjectMeta: cml.cm.ObjectMeta}
-	// Populate the type meta, so we don't have to get it from the schema
-	subject.Kind = "ConfigMap"
-	subject.APIVersion = v1.SchemeGroupVersion.String()
-	cml.LockConfig.EventRecorder.Eventf(subject, v1.EventTypeNormal, "LeaderElection", events)
+	cml.LockConfig.EventRecorder.Eventf(&v1.ConfigMap{ObjectMeta: cml.cm.ObjectMeta}, v1.EventTypeNormal, "LeaderElection", events)
 }
 
 // Describe is used to convert details on current resource lock

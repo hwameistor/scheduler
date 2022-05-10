@@ -43,8 +43,8 @@ type Metrics map[string]model.Samples
 
 // Equal returns true if all metrics are the same as the arguments.
 func (m *Metrics) Equal(o Metrics) bool {
-	var leftKeySet []string
-	var rightKeySet []string
+	leftKeySet := []string{}
+	rightKeySet := []string{}
 	for k := range *m {
 		leftKeySet = append(leftKeySet, k)
 	}
@@ -86,22 +86,35 @@ func ParseMetrics(data string, output *Metrics) error {
 			continue
 		}
 		for _, metric := range v {
-			name := string(metric.Metric[MetricNameLabel])
+			name := string(metric.Metric[model.MetricNameLabel])
 			(*output)[name] = append((*output)[name], metric)
 		}
 	}
 }
 
-// TextToMetricFamilies reads 'in' as the simple and flat text-based exchange
-// format and creates MetricFamily proto messages. It returns the MetricFamily
-// proto messages in a map where the metric names are the keys, along with any
-// error encountered.
-func TextToMetricFamilies(in io.Reader) (map[string]*dto.MetricFamily, error) {
-	var textParser expfmt.TextParser
-	return textParser.TextToMetricFamilies(in)
+// ExtractMetricSamples parses the prometheus metric samples from the input string.
+func ExtractMetricSamples(metricsBlob string) ([]*model.Sample, error) {
+	dec := expfmt.NewDecoder(strings.NewReader(metricsBlob), expfmt.FmtText)
+	decoder := expfmt.SampleDecoder{
+		Dec:  dec,
+		Opts: &expfmt.DecodeOptions{},
+	}
+
+	var samples []*model.Sample
+	for {
+		var v model.Vector
+		if err := decoder.Decode(&v); err != nil {
+			if err == io.EOF {
+				// Expected loop termination condition.
+				return samples, nil
+			}
+			return nil, err
+		}
+		samples = append(samples, v...)
+	}
 }
 
-// PrintSample returns formatted representation of metric Sample
+// PrintSample returns formated representation of metric Sample
 func PrintSample(sample *model.Sample) string {
 	buf := make([]string, 0)
 	// Id is a VERY special label. For 'normal' container it's useless, but it's necessary
@@ -176,112 +189,39 @@ type Histogram struct {
 	*dto.Histogram
 }
 
-// HistogramVec wraps a slice of Histogram.
-// Note that each Histogram must have the same number of buckets.
-type HistogramVec []*Histogram
-
-// GetAggregatedSampleCount aggregates the sample count of each inner Histogram.
-func (vec HistogramVec) GetAggregatedSampleCount() uint64 {
-	var count uint64
-	for _, hist := range vec {
-		count += hist.GetSampleCount()
-	}
-	return count
-}
-
-// GetAggregatedSampleSum aggregates the sample sum of each inner Histogram.
-func (vec HistogramVec) GetAggregatedSampleSum() float64 {
-	var sum float64
-	for _, hist := range vec {
-		sum += hist.GetSampleSum()
-	}
-	return sum
-}
-
-// Quantile first aggregates inner buckets of each Histogram, and then
-// computes q-th quantile of a cumulative histogram.
-func (vec HistogramVec) Quantile(q float64) float64 {
-	var buckets []bucket
-
-	for i, hist := range vec {
-		for j, bckt := range hist.Bucket {
-			if i == 0 {
-				buckets = append(buckets, bucket{
-					count:      float64(bckt.GetCumulativeCount()),
-					upperBound: bckt.GetUpperBound(),
-				})
-			} else {
-				buckets[j].count += float64(bckt.GetCumulativeCount())
-			}
-		}
-	}
-
-	if len(buckets) == 0 || buckets[len(buckets)-1].upperBound != math.Inf(+1) {
-		// The list of buckets in dto.Histogram doesn't include the final +Inf bucket, so we
-		// add it here for the rest of the samples.
-		buckets = append(buckets, bucket{
-			count:      float64(vec.GetAggregatedSampleCount()),
-			upperBound: math.Inf(+1),
-		})
-	}
-
-	return bucketQuantile(q, buckets)
-}
-
-// Average computes wrapped histograms' average value.
-func (vec HistogramVec) Average() float64 {
-	return vec.GetAggregatedSampleSum() / float64(vec.GetAggregatedSampleCount())
-}
-
-// Validate makes sure the wrapped histograms have all necessary fields set and with valid values.
-func (vec HistogramVec) Validate() error {
-	bucketSize := 0
-	for i, hist := range vec {
-		if err := hist.Validate(); err != nil {
-			return err
-		}
-		if i == 0 {
-			bucketSize = len(hist.GetBucket())
-		} else if bucketSize != len(hist.GetBucket()) {
-			return fmt.Errorf("found different bucket size: expect %v, but got %v at index %v", bucketSize, len(hist.GetBucket()), i)
-		}
-	}
-	return nil
-}
-
-// GetHistogramVecFromGatherer collects a metric, that matches the input labelValue map,
-// from a gatherer implementing k8s.io/component-base/metrics.Gatherer interface.
+// GetHistogramFromGatherer collects a metric from a gatherer implementing k8s.io/component-base/metrics.Gatherer interface.
 // Used only for testing purposes where we need to gather metrics directly from a running binary (without metrics endpoint).
-func GetHistogramVecFromGatherer(gatherer metrics.Gatherer, metricName string, lvMap map[string]string) (HistogramVec, error) {
+func GetHistogramFromGatherer(gatherer metrics.Gatherer, metricName string) (Histogram, error) {
 	var metricFamily *dto.MetricFamily
 	m, err := gatherer.Gather()
 	if err != nil {
-		return nil, err
+		return Histogram{}, err
 	}
 	for _, mFamily := range m {
-		if mFamily.GetName() == metricName {
+		if mFamily.Name != nil && *mFamily.Name == metricName {
 			metricFamily = mFamily
 			break
 		}
 	}
 
 	if metricFamily == nil {
-		return nil, fmt.Errorf("metric %q not found", metricName)
+		return Histogram{}, fmt.Errorf("Metric %q not found", metricName)
+	}
+
+	if metricFamily.GetMetric() == nil {
+		return Histogram{}, fmt.Errorf("Metric %q is empty", metricName)
 	}
 
 	if len(metricFamily.GetMetric()) == 0 {
-		return nil, fmt.Errorf("metric %q is empty", metricName)
+		return Histogram{}, fmt.Errorf("Metric %q is empty", metricName)
 	}
 
-	vec := make(HistogramVec, 0)
-	for _, metric := range metricFamily.GetMetric() {
-		if LabelsMatch(metric, lvMap) {
-			if hist := metric.GetHistogram(); hist != nil {
-				vec = append(vec, &Histogram{hist})
-			}
-		}
-	}
-	return vec, nil
+	return Histogram{
+		// Histograms are stored under the first index (based on observation).
+		// Given there's only one histogram registered per each metric name, accessing
+		// the first index is sufficient.
+		metricFamily.GetMetric()[0].GetHistogram(),
+	}, nil
 }
 
 func uint64Ptr(u uint64) *uint64 {
@@ -313,10 +253,6 @@ func bucketQuantile(q float64, buckets []bucket) float64 {
 		return buckets[0].upperBound * (rank / buckets[0].count)
 	}
 
-	if b == len(buckets)-1 && math.IsInf(buckets[b].upperBound, 1) {
-		return buckets[len(buckets)-2].upperBound
-	}
-
 	// linear approximation of b-th bucket
 	brank := rank - buckets[b-1].count
 	bSize := buckets[b].upperBound - buckets[b-1].upperBound
@@ -328,39 +264,48 @@ func bucketQuantile(q float64, buckets []bucket) float64 {
 // Quantile computes q-th quantile of a cumulative histogram.
 // It's expected the histogram is valid (by calling Validate)
 func (hist *Histogram) Quantile(q float64) float64 {
-	var buckets []bucket
+	buckets := []bucket{}
 
 	for _, bckt := range hist.Bucket {
 		buckets = append(buckets, bucket{
-			count:      float64(bckt.GetCumulativeCount()),
-			upperBound: bckt.GetUpperBound(),
+			count:      float64(*bckt.CumulativeCount),
+			upperBound: *bckt.UpperBound,
 		})
 	}
 
-	if len(buckets) == 0 || buckets[len(buckets)-1].upperBound != math.Inf(+1) {
-		// The list of buckets in dto.Histogram doesn't include the final +Inf bucket, so we
-		// add it here for the rest of the samples.
-		buckets = append(buckets, bucket{
-			count:      float64(hist.GetSampleCount()),
-			upperBound: math.Inf(+1),
-		})
-	}
+	// bucketQuantile expects the upper bound of the last bucket to be +inf
+	// buckets[len(buckets)-1].upperBound = math.Inf(+1)
 
 	return bucketQuantile(q, buckets)
 }
 
 // Average computes histogram's average value
 func (hist *Histogram) Average() float64 {
-	return hist.GetSampleSum() / float64(hist.GetSampleCount())
+	return *hist.SampleSum / float64(*hist.SampleCount)
+}
+
+// Clear clears all fields of the wrapped histogram
+func (hist *Histogram) Clear() {
+	if hist.SampleCount != nil {
+		*hist.SampleCount = 0
+	}
+	if hist.SampleSum != nil {
+		*hist.SampleSum = 0
+	}
+	for _, b := range hist.Bucket {
+		if b.CumulativeCount != nil {
+			*b.CumulativeCount = 0
+		}
+	}
 }
 
 // Validate makes sure the wrapped histogram has all necessary fields set and with valid values.
 func (hist *Histogram) Validate() error {
-	if hist.SampleCount == nil || hist.GetSampleCount() == 0 {
+	if hist.SampleCount == nil || *hist.SampleCount == 0 {
 		return fmt.Errorf("nil or empty histogram SampleCount")
 	}
 
-	if hist.SampleSum == nil || hist.GetSampleSum() == 0 {
+	if hist.SampleSum == nil || *hist.SampleSum == 0 {
 		return fmt.Errorf("nil or empty histogram SampleSum")
 	}
 
@@ -368,7 +313,7 @@ func (hist *Histogram) Validate() error {
 		if bckt == nil {
 			return fmt.Errorf("empty histogram bucket")
 		}
-		if bckt.UpperBound == nil || bckt.GetUpperBound() < 0 {
+		if bckt.UpperBound == nil || *bckt.UpperBound < 0 {
 			return fmt.Errorf("nil or negative histogram bucket UpperBound")
 		}
 	}
@@ -376,60 +321,29 @@ func (hist *Histogram) Validate() error {
 	return nil
 }
 
-// GetGaugeMetricValue extracts metric value from GaugeMetric
+// GetGaugeMetricValue extract metric value from GaugeMetric
 func GetGaugeMetricValue(m metrics.GaugeMetric) (float64, error) {
 	metricProto := &dto.Metric{}
 	if err := m.Write(metricProto); err != nil {
-		return 0, fmt.Errorf("error writing m: %v", err)
+		return 0, fmt.Errorf("Error writing m: %v", err)
 	}
 	return metricProto.Gauge.GetValue(), nil
 }
 
-// GetCounterMetricValue extracts metric value from CounterMetric
+// GetCounterMetricValue extract metric value from CounterMetric
 func GetCounterMetricValue(m metrics.CounterMetric) (float64, error) {
 	metricProto := &dto.Metric{}
 	if err := m.(metrics.Metric).Write(metricProto); err != nil {
-		return 0, fmt.Errorf("error writing m: %v", err)
+		return 0, fmt.Errorf("Error writing m: %v", err)
 	}
 	return metricProto.Counter.GetValue(), nil
 }
 
-// GetHistogramMetricValue extracts sum of all samples from ObserverMetric
+// GetHistogramMetricValue extract sum of all samples from ObserverMetric
 func GetHistogramMetricValue(m metrics.ObserverMetric) (float64, error) {
 	metricProto := &dto.Metric{}
 	if err := m.(metrics.Metric).Write(metricProto); err != nil {
-		return 0, fmt.Errorf("error writing m: %v", err)
+		return 0, fmt.Errorf("Error writing m: %v", err)
 	}
 	return metricProto.Histogram.GetSampleSum(), nil
-}
-
-// GetHistogramMetricCount extracts count of all samples from ObserverMetric
-func GetHistogramMetricCount(m metrics.ObserverMetric) (uint64, error) {
-	metricProto := &dto.Metric{}
-	if err := m.(metrics.Metric).Write(metricProto); err != nil {
-		return 0, fmt.Errorf("error writing m: %v", err)
-	}
-	return metricProto.Histogram.GetSampleCount(), nil
-}
-
-// LabelsMatch returns true if metric has all expected labels otherwise false
-func LabelsMatch(metric *dto.Metric, labelFilter map[string]string) bool {
-	metricLabels := map[string]string{}
-
-	for _, labelPair := range metric.Label {
-		metricLabels[labelPair.GetName()] = labelPair.GetValue()
-	}
-
-	// length comparison then match key to values in the maps
-	if len(labelFilter) > len(metricLabels) {
-		return false
-	}
-
-	for labelName, labelValue := range labelFilter {
-		if value, ok := metricLabels[labelName]; !ok || value != labelValue {
-			return false
-		}
-	}
-
-	return true
 }

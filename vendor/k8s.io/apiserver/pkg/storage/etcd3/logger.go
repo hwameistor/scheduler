@@ -19,12 +19,12 @@ package etcd3
 import (
 	"fmt"
 
-	"google.golang.org/grpc/grpclog"
-	"k8s.io/klog/v2"
+	"go.etcd.io/etcd/clientv3"
+	"k8s.io/klog"
 )
 
 func init() {
-	grpclog.SetLoggerV2(klogWrapper{})
+	clientv3.SetLogger(klogWrapper{})
 }
 
 type klogWrapper struct{}
@@ -32,21 +32,15 @@ type klogWrapper struct{}
 const klogWrapperDepth = 4
 
 func (klogWrapper) Info(args ...interface{}) {
-	if klog.V(5).Enabled() {
-		klog.InfoDepth(klogWrapperDepth, args...)
-	}
+	klog.InfoDepth(klogWrapperDepth, args...)
 }
 
 func (klogWrapper) Infoln(args ...interface{}) {
-	if klog.V(5).Enabled() {
-		klog.InfoDepth(klogWrapperDepth, fmt.Sprintln(args...))
-	}
+	klog.InfoDepth(klogWrapperDepth, fmt.Sprintln(args...))
 }
 
 func (klogWrapper) Infof(format string, args ...interface{}) {
-	if klog.V(5).Enabled() {
-		klog.InfoDepth(klogWrapperDepth, fmt.Sprintf(format, args...))
-	}
+	klog.InfoDepth(klogWrapperDepth, fmt.Sprintf(format, args...))
 }
 
 func (klogWrapper) Warning(args ...interface{}) {
@@ -86,5 +80,5 @@ func (klogWrapper) Fatalf(format string, args ...interface{}) {
 }
 
 func (klogWrapper) V(l int) bool {
-	return bool(klog.V(klog.Level(l)).Enabled())
+	return bool(klog.V(klog.Level(l)))
 }

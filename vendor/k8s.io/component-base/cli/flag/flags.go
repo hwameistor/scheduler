@@ -21,10 +21,8 @@ import (
 	"strings"
 
 	"github.com/spf13/pflag"
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 )
-
-var underscoreWarnings = make(map[string]bool)
 
 // WordSepNormalizeFunc changes all flags that contain "_" separators
 func WordSepNormalizeFunc(f *pflag.FlagSet, name string) pflag.NormalizedName {
@@ -38,10 +36,7 @@ func WordSepNormalizeFunc(f *pflag.FlagSet, name string) pflag.NormalizedName {
 func WarnWordSepNormalizeFunc(f *pflag.FlagSet, name string) pflag.NormalizedName {
 	if strings.Contains(name, "_") {
 		nname := strings.Replace(name, "_", "-", -1)
-		if _, alreadyWarned := underscoreWarnings[name]; !alreadyWarned {
-			klog.Warningf("using an underscore in a flag name is not supported. %s has been converted to %s.", name, nname)
-			underscoreWarnings[name] = true
-		}
+		klog.Warningf("%s is DEPRECATED and will be removed in a future version. Use %s instead.", name, nname)
 
 		return pflag.NormalizedName(nname)
 	}
@@ -55,12 +50,5 @@ func InitFlags() {
 	pflag.Parse()
 	pflag.VisitAll(func(flag *pflag.Flag) {
 		klog.V(2).Infof("FLAG: --%s=%q", flag.Name, flag.Value)
-	})
-}
-
-// PrintFlags logs the flags in the flagset
-func PrintFlags(flags *pflag.FlagSet) {
-	flags.VisitAll(func(flag *pflag.Flag) {
-		klog.V(1).Infof("FLAG: --%s=%q", flag.Name, flag.Value)
 	})
 }
