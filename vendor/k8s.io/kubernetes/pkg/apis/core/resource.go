@@ -26,33 +26,40 @@ func (rn ResourceName) String() string {
 
 // CPU returns the CPU limit if specified.
 func (rl *ResourceList) CPU() *resource.Quantity {
-	return rl.Name(ResourceCPU, resource.DecimalSI)
+	if val, ok := (*rl)[ResourceCPU]; ok {
+		return &val
+	}
+	return &resource.Quantity{Format: resource.DecimalSI}
 }
 
 // Memory returns the Memory limit if specified.
 func (rl *ResourceList) Memory() *resource.Quantity {
-	return rl.Name(ResourceMemory, resource.BinarySI)
+	if val, ok := (*rl)[ResourceMemory]; ok {
+		return &val
+	}
+	return &resource.Quantity{Format: resource.BinarySI}
 }
 
 // Storage returns the Storage limit if specified.
 func (rl *ResourceList) Storage() *resource.Quantity {
-	return rl.Name(ResourceStorage, resource.BinarySI)
+	if val, ok := (*rl)[ResourceStorage]; ok {
+		return &val
+	}
+	return &resource.Quantity{Format: resource.BinarySI}
 }
 
 // Pods returns the list of pods
 func (rl *ResourceList) Pods() *resource.Quantity {
-	return rl.Name(ResourcePods, resource.DecimalSI)
+	if val, ok := (*rl)[ResourcePods]; ok {
+		return &val
+	}
+	return &resource.Quantity{}
 }
 
 // StorageEphemeral returns the list of ephemeral storage volumes, if any
 func (rl *ResourceList) StorageEphemeral() *resource.Quantity {
-	return rl.Name(ResourceEphemeralStorage, resource.BinarySI)
-}
-
-// Name returns the resource with name if specified, otherwise it returns a nil quantity with default format.
-func (rl *ResourceList) Name(name ResourceName, defaultFormat resource.Format) *resource.Quantity {
-	if val, ok := (*rl)[name]; ok {
+	if val, ok := (*rl)[ResourceEphemeralStorage]; ok {
 		return &val
 	}
-	return &resource.Quantity{Format: defaultFormat}
+	return &resource.Quantity{}
 }

@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/clientv3"
 	"k8s.io/apiserver/pkg/storage/etcd3/metrics"
 )
 
@@ -58,7 +58,7 @@ type leaseManager struct {
 	prevLeaseExpirationTime time.Time
 	// The period of time in seconds and percent of TTL that each lease is
 	// reused. The minimum of them is used to avoid unreasonably large
-	// numbers.
+	// numbers. We use var instead of const for testing purposes.
 	leaseReuseDurationSeconds   int64
 	leaseReuseDurationPercent   float64
 	leaseMaxAttachedObjectCount int64

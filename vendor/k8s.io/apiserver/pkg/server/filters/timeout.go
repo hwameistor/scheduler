@@ -18,6 +18,7 @@ package filters
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -30,37 +31,42 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apiserver/pkg/endpoints/metrics"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
-	"k8s.io/apiserver/pkg/endpoints/responsewriter"
 )
 
+var errConnKilled = fmt.Errorf("killing connection/stream because serving request timed out and response had been started")
+
 // WithTimeoutForNonLongRunningRequests times out non-long-running requests after the time given by timeout.
-func WithTimeoutForNonLongRunningRequests(handler http.Handler, longRunning apirequest.LongRunningRequestCheck) http.Handler {
+func WithTimeoutForNonLongRunningRequests(handler http.Handler, longRunning apirequest.LongRunningRequestCheck, timeout time.Duration) http.Handler {
 	if longRunning == nil {
 		return handler
 	}
-	timeoutFunc := func(req *http.Request) (*http.Request, bool, func(), *apierrors.StatusError) {
+	timeoutFunc := func(req *http.Request) (*http.Request, <-chan time.Time, func(), *apierrors.StatusError) {
 		// TODO unify this with apiserver.MaxInFlightLimit
 		ctx := req.Context()
 
 		requestInfo, ok := apirequest.RequestInfoFrom(ctx)
 		if !ok {
 			// if this happens, the handler chain isn't setup correctly because there is no request info
-			return req, false, func() {}, apierrors.NewInternalError(fmt.Errorf("no request info found for request during timeout"))
+			return req, time.After(timeout), func() {}, apierrors.NewInternalError(fmt.Errorf("no request info found for request during timeout"))
 		}
 
 		if longRunning(req, requestInfo) {
-			return req, true, nil, nil
+			return req, nil, nil, nil
 		}
 
+		ctx, cancel := context.WithCancel(ctx)
+		req = req.WithContext(ctx)
+
 		postTimeoutFn := func() {
+			cancel()
 			metrics.RecordRequestTermination(req, requestInfo, metrics.APIServerComponent, http.StatusGatewayTimeout)
 		}
-		return req, false, postTimeoutFn, apierrors.NewTimeoutError("request did not complete within the allotted timeout", 0)
+		return req, time.After(timeout), postTimeoutFn, apierrors.NewTimeoutError(fmt.Sprintf("request did not complete within %s", timeout), 0)
 	}
 	return WithTimeout(handler, timeoutFunc)
 }
 
-type timeoutFunc = func(*http.Request) (req *http.Request, longRunning bool, postTimeoutFunc func(), err *apierrors.StatusError)
+type timeoutFunc = func(*http.Request) (req *http.Request, timeout <-chan time.Time, postTimeoutFunc func(), err *apierrors.StatusError)
 
 // WithTimeout returns an http.Handler that runs h with a timeout
 // determined by timeoutFunc. The new http.Handler calls h.ServeHTTP to handle
@@ -81,18 +87,15 @@ type timeoutHandler struct {
 }
 
 func (t *timeoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	r, longRunning, postTimeoutFn, err := t.timeout(r)
-	if longRunning {
+	r, after, postTimeoutFn, err := t.timeout(r)
+	if after == nil {
 		t.handler.ServeHTTP(w, r)
 		return
 	}
 
-	timeoutCh := r.Context().Done()
-
 	// resultCh is used as both errCh and stopCh
 	resultCh := make(chan interface{})
-	var tw timeoutWriter
-	tw, w = newTimeoutWriter(w)
+	tw := newTimeoutWriter(w)
 	go func() {
 		defer func() {
 			err := recover()
@@ -107,7 +110,7 @@ func (t *timeoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			resultCh <- err
 		}()
-		t.handler.ServeHTTP(w, r)
+		t.handler.ServeHTTP(tw, r)
 	}()
 	select {
 	case err := <-resultCh:
@@ -116,25 +119,21 @@ func (t *timeoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 		return
-	case <-timeoutCh:
+	case <-after:
 		defer func() {
 			// resultCh needs to have a reader, since the function doing
 			// the work needs to send to it. This is defer'd to ensure it runs
 			// ever if the post timeout work itself panics.
 			go func() {
-				timedOutAt := time.Now()
 				res := <-resultCh
-
-				status := metrics.PostTimeoutHandlerOK
 				if res != nil {
-					// a non nil res indicates that there was a panic.
-					status = metrics.PostTimeoutHandlerPanic
+					switch t := res.(type) {
+					case error:
+						utilruntime.HandleError(t)
+					default:
+						utilruntime.HandleError(fmt.Errorf("%v", res))
+					}
 				}
-
-				metrics.RecordRequestPostTimeout(metrics.PostTimeoutSourceTimeoutHandler, status)
-				err := fmt.Errorf("post-timeout activity - time-elapsed: %s, %v %q result: %v",
-					time.Since(timedOutAt), r.Method, r.URL.Path, res)
-				utilruntime.HandleError(err)
 			}()
 		}()
 
@@ -148,21 +147,26 @@ type timeoutWriter interface {
 	timeout(*apierrors.StatusError)
 }
 
-func newTimeoutWriter(w http.ResponseWriter) (timeoutWriter, http.ResponseWriter) {
-	base := &baseTimeoutWriter{w: w, handlerHeaders: w.Header().Clone()}
-	wrapped := responsewriter.WrapForHTTP1Or2(base)
+func newTimeoutWriter(w http.ResponseWriter) timeoutWriter {
+	base := &baseTimeoutWriter{w: w}
 
-	return base, wrapped
+	_, notifiable := w.(http.CloseNotifier)
+	_, hijackable := w.(http.Hijacker)
+
+	switch {
+	case notifiable && hijackable:
+		return &closeHijackTimeoutWriter{base}
+	case notifiable:
+		return &closeTimeoutWriter{base}
+	case hijackable:
+		return &hijackTimeoutWriter{base}
+	default:
+		return base
+	}
 }
-
-var _ http.ResponseWriter = &baseTimeoutWriter{}
-var _ responsewriter.UserProvidedDecorator = &baseTimeoutWriter{}
 
 type baseTimeoutWriter struct {
 	w http.ResponseWriter
-
-	// headers written by the normal handler
-	handlerHeaders http.Header
 
 	mu sync.Mutex
 	// if the timeout handler has timeout
@@ -173,10 +177,6 @@ type baseTimeoutWriter struct {
 	hijacked bool
 }
 
-func (tw *baseTimeoutWriter) Unwrap() http.ResponseWriter {
-	return tw.w
-}
-
 func (tw *baseTimeoutWriter) Header() http.Header {
 	tw.mu.Lock()
 	defer tw.mu.Unlock()
@@ -185,7 +185,7 @@ func (tw *baseTimeoutWriter) Header() http.Header {
 		return http.Header{}
 	}
 
-	return tw.handlerHeaders
+	return tw.w.Header()
 }
 
 func (tw *baseTimeoutWriter) Write(p []byte) (int, error) {
@@ -199,10 +199,7 @@ func (tw *baseTimeoutWriter) Write(p []byte) (int, error) {
 		return 0, http.ErrHijacked
 	}
 
-	if !tw.wroteHeader {
-		copyHeaders(tw.w.Header(), tw.handlerHeaders)
-		tw.wroteHeader = true
-	}
+	tw.wroteHeader = true
 	return tw.w.Write(p)
 }
 
@@ -214,9 +211,9 @@ func (tw *baseTimeoutWriter) Flush() {
 		return
 	}
 
-	// the outer ResponseWriter object returned by WrapForHTTP1Or2 implements
-	// http.Flusher if the inner object (tw.w) implements http.Flusher.
-	tw.w.(http.Flusher).Flush()
+	if flusher, ok := tw.w.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func (tw *baseTimeoutWriter) WriteHeader(code int) {
@@ -227,15 +224,8 @@ func (tw *baseTimeoutWriter) WriteHeader(code int) {
 		return
 	}
 
-	copyHeaders(tw.w.Header(), tw.handlerHeaders)
 	tw.wroteHeader = true
 	tw.w.WriteHeader(code)
-}
-
-func copyHeaders(dst, src http.Header) {
-	for k, v := range src {
-		dst[k] = v
-	}
 }
 
 func (tw *baseTimeoutWriter) timeout(err *apierrors.StatusError) {
@@ -256,21 +246,19 @@ func (tw *baseTimeoutWriter) timeout(err *apierrors.StatusError) {
 		// no way to timeout the HTTP request at the point. We have to shutdown
 		// the connection for HTTP1 or reset stream for HTTP2.
 		//
-		// Note from the golang's docs:
-		// If ServeHTTP panics, the server (the caller of ServeHTTP) assumes
-		// that the effect of the panic was isolated to the active request.
-		// It recovers the panic, logs a stack trace to the server error log,
-		// and either closes the network connection or sends an HTTP/2
-		// RST_STREAM, depending on the HTTP protocol. To abort a handler so
-		// the client sees an interrupted response but the server doesn't log
-		// an error, panic with the value ErrAbortHandler.
-		//
-		// We are throwing http.ErrAbortHandler deliberately so that a client is notified and to suppress a not helpful stacktrace in the logs
-		panic(http.ErrAbortHandler)
+		// Note from: Brad Fitzpatrick
+		// if the ServeHTTP goroutine panics, that will do the best possible thing for both
+		// HTTP/1 and HTTP/2. In HTTP/1, assuming you're replying with at least HTTP/1.1 and
+		// you've already flushed the headers so it's using HTTP chunking, it'll kill the TCP
+		// connection immediately without a proper 0-byte EOF chunk, so the peer will recognize
+		// the response as bogus. In HTTP/2 the server will just RST_STREAM the stream, leaving
+		// the TCP connection open, but resetting the stream to the peer so it'll have an error,
+		// like the HTTP/1 case.
+		panic(errConnKilled)
 	}
 }
 
-func (tw *baseTimeoutWriter) CloseNotify() <-chan bool {
+func (tw *baseTimeoutWriter) closeNotify() <-chan bool {
 	tw.mu.Lock()
 	defer tw.mu.Unlock()
 
@@ -280,24 +268,47 @@ func (tw *baseTimeoutWriter) CloseNotify() <-chan bool {
 		return done
 	}
 
-	// the outer ResponseWriter object returned by WrapForHTTP1Or2 implements
-	// http.CloseNotifier if the inner object (tw.w) implements http.CloseNotifier.
 	return tw.w.(http.CloseNotifier).CloseNotify()
 }
 
-func (tw *baseTimeoutWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+func (tw *baseTimeoutWriter) hijack() (net.Conn, *bufio.ReadWriter, error) {
 	tw.mu.Lock()
 	defer tw.mu.Unlock()
 
 	if tw.timedOut {
 		return nil, nil, http.ErrHandlerTimeout
 	}
-
-	// the outer ResponseWriter object returned by WrapForHTTP1Or2 implements
-	// http.Hijacker if the inner object (tw.w) implements http.Hijacker.
 	conn, rw, err := tw.w.(http.Hijacker).Hijack()
 	if err == nil {
 		tw.hijacked = true
 	}
 	return conn, rw, err
+}
+
+type closeTimeoutWriter struct {
+	*baseTimeoutWriter
+}
+
+func (tw *closeTimeoutWriter) CloseNotify() <-chan bool {
+	return tw.closeNotify()
+}
+
+type hijackTimeoutWriter struct {
+	*baseTimeoutWriter
+}
+
+func (tw *hijackTimeoutWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return tw.hijack()
+}
+
+type closeHijackTimeoutWriter struct {
+	*baseTimeoutWriter
+}
+
+func (tw *closeHijackTimeoutWriter) CloseNotify() <-chan bool {
+	return tw.closeNotify()
+}
+
+func (tw *closeHijackTimeoutWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return tw.hijack()
 }

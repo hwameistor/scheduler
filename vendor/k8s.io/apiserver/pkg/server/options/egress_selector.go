@@ -18,7 +18,6 @@ package options
 
 import (
 	"fmt"
-
 	"github.com/spf13/pflag"
 	"k8s.io/utils/path"
 
@@ -27,7 +26,7 @@ import (
 )
 
 // EgressSelectorOptions holds the api server egress selector options.
-// See https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1281-network-proxy/README.md
+// See https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/20190226-network-proxy.md
 type EgressSelectorOptions struct {
 	// ConfigFile is the file path with api-server egress selector configuration.
 	ConfigFile string
@@ -85,7 +84,7 @@ func (o *EgressSelectorOptions) Validate() []error {
 
 	errs := []error{}
 
-	if exists, err := path.Exists(path.CheckFollowSymlink, o.ConfigFile); !exists || err != nil {
+	if exists, err := path.Exists(path.CheckFollowSymlink, o.ConfigFile); exists == false || err != nil {
 		errs = append(errs, fmt.Errorf("egress-selector-config-file %s does not exist", o.ConfigFile))
 	}
 

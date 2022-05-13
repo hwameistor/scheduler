@@ -22,7 +22,7 @@ import (
 	"net"
 	"time"
 
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 	"sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client"
 )
 
@@ -35,7 +35,6 @@ const CloseTimeout = 10 * time.Second
 type conn struct {
 	stream  client.ProxyService_ProxyClient
 	connID  int64
-	random  int64
 	readCh  chan []byte
 	closeCh chan string
 	rdata   []byte
@@ -55,7 +54,7 @@ func (c *conn) Write(data []byte) (n int, err error) {
 		},
 	}
 
-	klog.V(5).InfoS("[tracing] send req", "type", req.Type)
+	klog.V(6).Infof("[tracing] send req, type: %s", req.Type)
 
 	err = c.stream.Send(req)
 	if err != nil {
@@ -113,30 +112,17 @@ func (c *conn) SetWriteDeadline(t time.Time) error {
 // Close closes the connection. It also sends CLOSE_REQ packet over
 // proxy service to notify remote to drop the connection.
 func (c *conn) Close() error {
-	klog.V(4).Infoln("closing connection")
-	var req *client.Packet
-	if c.connID != 0 {
-		req = &client.Packet{
-			Type: client.PacketType_CLOSE_REQ,
-			Payload: &client.Packet_CloseRequest{
-				CloseRequest: &client.CloseRequest{
-					ConnectID: c.connID,
-				},
+	klog.Info("conn.Close()")
+	req := &client.Packet{
+		Type: client.PacketType_CLOSE_REQ,
+		Payload: &client.Packet_CloseRequest{
+			CloseRequest: &client.CloseRequest{
+				ConnectID: c.connID,
 			},
-		}
-	} else {
-		// Never received a DIAL response so no connection ID.
-		req = &client.Packet{
-			Type: client.PacketType_DIAL_CLS,
-			Payload: &client.Packet_CloseDial{
-				CloseDial: &client.CloseDial{
-					Random: c.random,
-				},
-			},
-		}
+		},
 	}
 
-	klog.V(5).InfoS("[tracing] send req", "type", req.Type)
+	klog.V(6).Infof("[tracing] send req, type: %s", req.Type)
 
 	if err := c.stream.Send(req); err != nil {
 		return err

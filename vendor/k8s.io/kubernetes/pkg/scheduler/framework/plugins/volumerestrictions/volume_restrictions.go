@@ -18,40 +18,24 @@ package volumerestrictions
 
 import (
 	"context"
-	"sync/atomic"
 
 	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/sets"
-	corelisters "k8s.io/client-go/listers/core/v1"
-	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
-	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/names"
+	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
+	"k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 )
 
 // VolumeRestrictions is a plugin that checks volume restrictions.
-type VolumeRestrictions struct {
-	parallelizer           parallelize.Parallelizer
-	pvcLister              corelisters.PersistentVolumeClaimLister
-	nodeInfoLister         framework.SharedLister
-	enableReadWriteOncePod bool
-}
+type VolumeRestrictions struct{}
 
-var _ framework.PreFilterPlugin = &VolumeRestrictions{}
 var _ framework.FilterPlugin = &VolumeRestrictions{}
-var _ framework.EnqueueExtensions = &VolumeRestrictions{}
 
 // Name is the name of the plugin used in the plugin registry and configurations.
-const Name = names.VolumeRestrictions
+const Name = "VolumeRestrictions"
 
 const (
 	// ErrReasonDiskConflict is used for NoDiskConflict predicate error.
 	ErrReasonDiskConflict = "node(s) had no available disk"
-	// ErrReasonReadWriteOncePodConflict is used when a pod is found using the same PVC with the ReadWriteOncePod access mode.
-	ErrReasonReadWriteOncePodConflict = "node has pod using PersistentVolumeClaim with the same name and ReadWriteOncePod access mode"
 )
 
 // Name returns name of the plugin. It is used in logs, etc.
@@ -59,7 +43,12 @@ func (pl *VolumeRestrictions) Name() string {
 	return Name
 }
 
-func isVolumeConflict(volume *v1.Volume, pod *v1.Pod) bool {
+func isVolumeConflict(volume v1.Volume, pod *v1.Pod) bool {
+	// fast path if there is no conflict checking targets.
+	if volume.GCEPersistentDisk == nil && volume.AWSElasticBlockStore == nil && volume.RBD == nil && volume.ISCSI == nil {
+		return false
+	}
+
 	for _, existingVolume := range pod.Spec.Volumes {
 		// Same GCE disk mounted by multiple pods conflicts unless all pods mount it read-only.
 		if volume.GCEPersistentDisk != nil && existingVolume.GCEPersistentDisk != nil {
@@ -106,10 +95,10 @@ func haveOverlap(a1, a2 []string) bool {
 	if len(a1) > len(a2) {
 		a1, a2 = a2, a1
 	}
-	m := make(sets.String)
+	m := map[string]bool{}
 
 	for _, val := range a1 {
-		m.Insert(val)
+		m[val] = true
 	}
 	for _, val := range a2 {
 		if _, ok := m[val]; ok {
@@ -118,72 +107,6 @@ func haveOverlap(a1, a2 []string) bool {
 	}
 
 	return false
-}
-
-func (pl *VolumeRestrictions) PreFilter(ctx context.Context, cycleState *framework.CycleState, pod *v1.Pod) *framework.Status {
-	if pl.enableReadWriteOncePod {
-		return pl.isReadWriteOncePodAccessModeConflict(pod)
-	}
-	return framework.NewStatus(framework.Success)
-}
-
-// isReadWriteOncePodAccessModeConflict checks if a pod uses a PVC with the ReadWriteOncePod access mode.
-// This access mode restricts volume access to a single pod on a single node. Since only a single pod can
-// use a ReadWriteOncePod PVC, mark any other pods attempting to use this PVC as UnschedulableAndUnresolvable.
-// TODO(#103132): Mark pod as Unschedulable and add preemption logic.
-func (pl *VolumeRestrictions) isReadWriteOncePodAccessModeConflict(pod *v1.Pod) *framework.Status {
-	nodeInfos, err := pl.nodeInfoLister.NodeInfos().List()
-	if err != nil {
-		return framework.NewStatus(framework.Error, "error while getting node info")
-	}
-
-	var pvcKeys []string
-	for _, volume := range pod.Spec.Volumes {
-		if volume.PersistentVolumeClaim == nil {
-			continue
-		}
-
-		pvc, err := pl.pvcLister.PersistentVolumeClaims(pod.Namespace).Get(volume.PersistentVolumeClaim.ClaimName)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				return framework.NewStatus(framework.UnschedulableAndUnresolvable, err.Error())
-			}
-			return framework.AsStatus(err)
-		}
-
-		if !v1helper.ContainsAccessMode(pvc.Spec.AccessModes, v1.ReadWriteOncePod) {
-			continue
-		}
-
-		key := pod.Namespace + "/" + volume.PersistentVolumeClaim.ClaimName
-		pvcKeys = append(pvcKeys, key)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	var conflicts uint32
-
-	processNode := func(i int) {
-		nodeInfo := nodeInfos[i]
-		for _, key := range pvcKeys {
-			refCount := nodeInfo.PVCRefCounts[key]
-			if refCount > 0 {
-				atomic.AddUint32(&conflicts, 1)
-				cancel()
-			}
-		}
-	}
-	pl.parallelizer.Until(ctx, len(nodeInfos), processNode)
-
-	// Enforce ReadWriteOncePod access mode. This is also enforced during volume mount in kubelet.
-	if conflicts > 0 {
-		return framework.NewStatus(framework.UnschedulableAndUnresolvable, ErrReasonReadWriteOncePodConflict)
-	}
-
-	return nil
-}
-
-func (pl *VolumeRestrictions) PreFilterExtensions() framework.PreFilterExtensions {
-	return nil
 }
 
 // Filter invoked at the filter extension point.
@@ -195,16 +118,10 @@ func (pl *VolumeRestrictions) PreFilterExtensions() framework.PreFilterExtension
 // - AWS EBS forbids any two pods mounting the same volume ID
 // - Ceph RBD forbids if any two pods share at least same monitor, and match pool and image, and the image is read-only
 // - ISCSI forbids if any two pods share at least same IQN and ISCSI volume is read-only
-func (pl *VolumeRestrictions) Filter(ctx context.Context, _ *framework.CycleState, pod *v1.Pod, nodeInfo *framework.NodeInfo) *framework.Status {
-	for i := range pod.Spec.Volumes {
-		v := &pod.Spec.Volumes[i]
-		// fast path if there is no conflict checking targets.
-		if v.GCEPersistentDisk == nil && v.AWSElasticBlockStore == nil && v.RBD == nil && v.ISCSI == nil {
-			continue
-		}
-
-		for _, ev := range nodeInfo.Pods {
-			if isVolumeConflict(v, ev.Pod) {
+func (pl *VolumeRestrictions) Filter(ctx context.Context, _ *framework.CycleState, pod *v1.Pod, nodeInfo *nodeinfo.NodeInfo) *framework.Status {
+	for _, v := range pod.Spec.Volumes {
+		for _, ev := range nodeInfo.Pods() {
+			if isVolumeConflict(v, ev) {
 				return framework.NewStatus(framework.Unschedulable, ErrReasonDiskConflict)
 			}
 		}
@@ -212,32 +129,7 @@ func (pl *VolumeRestrictions) Filter(ctx context.Context, _ *framework.CycleStat
 	return nil
 }
 
-// EventsToRegister returns the possible events that may make a Pod
-// failed by this plugin schedulable.
-func (pl *VolumeRestrictions) EventsToRegister() []framework.ClusterEvent {
-	return []framework.ClusterEvent{
-		// Pods may fail to schedule because of volumes conflicting with other pods on same node.
-		// Once running pods are deleted and volumes have been released, the unschedulable pod will be schedulable.
-		// Due to immutable fields `spec.volumes`, pod update events are ignored.
-		{Resource: framework.Pod, ActionType: framework.Delete},
-		// A new Node may make a pod schedulable.
-		{Resource: framework.Node, ActionType: framework.Add},
-		// Pods may fail to schedule because the PVC it uses has not yet been created.
-		// This PVC is required to exist to check its access modes.
-		{Resource: framework.PersistentVolumeClaim, ActionType: framework.Add | framework.Update},
-	}
-}
-
 // New initializes a new plugin and returns it.
-func New(_ runtime.Object, handle framework.Handle, fts feature.Features) (framework.Plugin, error) {
-	informerFactory := handle.SharedInformerFactory()
-	pvcLister := informerFactory.Core().V1().PersistentVolumeClaims().Lister()
-	nodeInfoLister := handle.SnapshotSharedLister()
-
-	return &VolumeRestrictions{
-		parallelizer:           handle.Parallelizer(),
-		pvcLister:              pvcLister,
-		nodeInfoLister:         nodeInfoLister,
-		enableReadWriteOncePod: fts.EnableReadWriteOncePod,
-	}, nil
+func New(_ *runtime.Unknown, _ framework.FrameworkHandle) (framework.Plugin, error) {
+	return &VolumeRestrictions{}, nil
 }

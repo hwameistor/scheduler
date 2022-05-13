@@ -17,9 +17,12 @@ limitations under the License.
 package metrics
 
 import (
+	"os"
 	"time"
 
-	"k8s.io/klog/v2"
+	"github.com/prometheus/procfs"
+
+	"k8s.io/klog"
 )
 
 var processStartTime = NewGaugeVec(
@@ -40,12 +43,19 @@ func RegisterProcessStartTime(registrationFunc func(Registerable) error) error {
 		klog.Errorf("Could not get process start time, %v", err)
 		start = float64(time.Now().Unix())
 	}
-	// processStartTime is a lazy metric which only get initialized after registered.
-	// so we need to register the metric first and then set the value for it
-	if err = registrationFunc(processStartTime); err != nil {
-		return err
+	processStartTime.WithLabelValues().Set(start)
+	return registrationFunc(processStartTime)
+}
+
+func getProcessStart() (float64, error) {
+	pid := os.Getpid()
+	p, err := procfs.NewProc(pid)
+	if err != nil {
+		return 0, err
 	}
 
-	processStartTime.WithLabelValues().Set(start)
-	return nil
+	if stat, err := p.NewStat(); err == nil {
+		return stat.StartTime()
+	}
+	return 0, err
 }

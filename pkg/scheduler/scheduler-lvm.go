@@ -13,12 +13,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	storagev1lister "k8s.io/client-go/listers/storage/v1"
-	framework "k8s.io/kubernetes/pkg/scheduler/framework"
+	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 )
 
 type LVMVolumeScheduler struct {
-	fHandle framework.Handle
+	fHandle framework.FrameworkHandle
 
 	csiDriverName    string
 	topoNodeLabelKey string
@@ -29,8 +29,7 @@ type LVMVolumeScheduler struct {
 	scLister storagev1lister.StorageClassLister
 }
 
-func NewLVMVolumeScheduler(f framework.Handle, scheduler lvmscheduler.Scheduler, hwameiStorCache cache.Cache) VolumeScheduler {
-
+func NewLVMVolumeScheduler(f framework.FrameworkHandle, scheduler lvmscheduler.Scheduler, hwameiStorCache cache.Cache) VolumeScheduler {
 	sche := &LVMVolumeScheduler{
 		fHandle:          f,
 		topoNodeLabelKey: localstorageapis.TopologyNodeKey,

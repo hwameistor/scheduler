@@ -17,9 +17,11 @@ limitations under the License.
 package routes
 
 import (
+	"io"
+	"net/http"
+
 	apimetrics "k8s.io/apiserver/pkg/endpoints/metrics"
 	"k8s.io/apiserver/pkg/server/mux"
-	cachermetrics "k8s.io/apiserver/pkg/storage/cacher/metrics"
 	etcd3metrics "k8s.io/apiserver/pkg/storage/etcd3/metrics"
 	flowcontrolmetrics "k8s.io/apiserver/pkg/util/flowcontrol/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
@@ -41,13 +43,21 @@ type MetricsWithReset struct{}
 // Install adds the MetricsWithReset handler
 func (m MetricsWithReset) Install(c *mux.PathRecorderMux) {
 	register()
-	c.Handle("/metrics", legacyregistry.HandlerWithReset())
+	defaultMetricsHandler := legacyregistry.Handler().ServeHTTP
+	c.HandleFunc("/metrics", func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == "DELETE" {
+			apimetrics.Reset()
+			etcd3metrics.Reset()
+			io.WriteString(w, "metrics reset\n")
+			return
+		}
+		defaultMetricsHandler(w, req)
+	})
 }
 
 // register apiserver and etcd metrics
 func register() {
 	apimetrics.Register()
-	cachermetrics.Register()
 	etcd3metrics.Register()
 	flowcontrolmetrics.Register()
 }

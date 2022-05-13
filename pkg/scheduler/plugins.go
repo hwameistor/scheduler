@@ -2,17 +2,18 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
 	"time"
+
+	"k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 
 	log "github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	framework "k8s.io/kubernetes/pkg/scheduler/framework"
+	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 )
 
 type Plugin struct {
-	fHandle framework.Handle
+	fHandle framework.FrameworkHandle
 
 	scheduler *Scheduler
 }
@@ -25,8 +26,7 @@ const (
 )
 
 // New initializes a new plugin and returns it.
-func New(_ runtime.Object, f framework.Handle) (framework.Plugin, error) {
-
+func New(_ *runtime.Unknown, f framework.FrameworkHandle) (framework.Plugin, error) {
 	time.Sleep(time.Second) // wait for scheduleLabelMgr to be created
 	log.SetLevel(log.DebugLevel)
 
@@ -42,12 +42,12 @@ func (p Plugin) Name() string {
 }
 
 // Filter is the functions invoked by the framework at "filter" extension point.
-func (p *Plugin) Filter(ctx context.Context, state *framework.CycleState, pod *v1.Pod, node *framework.NodeInfo) *framework.Status {
+func (p *Plugin) Filter(ctx context.Context, state *framework.CycleState, pod *v1.Pod, node *nodeinfo.NodeInfo) *framework.Status {
 	if pod == nil {
-		return framework.AsStatus(fmt.Errorf("no pod specified"))
+		return framework.NewStatus(framework.Unschedulable, "no pod specified")
 	}
 	if node == nil || node.Node() == nil {
-		return framework.AsStatus(fmt.Errorf("no node specified"))
+		return framework.NewStatus(framework.Unschedulable, "no node specified")
 	}
 	log.WithFields(log.Fields{"pod": pod.Name, "node": node.Node().Name}).Debug("filtering a node against a pod")
 
@@ -62,12 +62,14 @@ func (p *Plugin) Filter(ctx context.Context, state *framework.CycleState, pod *v
 		log.WithFields(log.Fields{"pod": pod.Name, "node": node.Node().Name}).WithError(err).Debug("Filtered out the node")
 		return framework.NewStatus(framework.Unschedulable, err.Error())
 	}
+
 	if allowed {
 		log.WithFields(log.Fields{"pod": pod.Name, "node": node.Node().Name}).Debug("Filtered in the node")
 		return framework.NewStatus(framework.Success, "can be scheduled on this node")
 	}
+
 	log.WithFields(log.Fields{"pod": pod.Name, "node": node.Node().Name}).Debug("Filtered out the node")
-	return framework.NewStatus(framework.Unschedulable, err.Error())
+	return framework.NewStatus(framework.Unschedulable, "can not be scheduled on this node")
 }
 
 func (p *Plugin) filter(pod *v1.Pod, node *v1.Node) (bool, error) {

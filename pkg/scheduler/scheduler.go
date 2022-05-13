@@ -14,7 +14,7 @@ import (
 	storagev1lister "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
+	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 )
@@ -30,7 +30,7 @@ type Scheduler struct {
 }
 
 // NewDataCache creates a cache instance
-func NewScheduler(f framework.Handle) *Scheduler {
+func NewScheduler(f framework.FrameworkHandle) *Scheduler {
 
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
@@ -57,7 +57,7 @@ func NewScheduler(f framework.Handle) *Scheduler {
 	go func() {
 		hwameiStorCache.Start(ctx)
 	}()
-	replicaScheduler := lvmscheduler.New(mgr.GetClient(), hwameiStorCache, 1000)
+	replicaScheduler := lvmscheduler.New(mgr.GetClient(), hwameiStorCache, MaxHAVolumeCount)
 	// wait for cache synced
 	for {
 		if hwameiStorCache.WaitForCacheSync(ctx) {

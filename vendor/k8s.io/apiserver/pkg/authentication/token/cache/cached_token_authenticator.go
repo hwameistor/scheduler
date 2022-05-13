@@ -33,11 +33,9 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	auditinternal "k8s.io/apiserver/pkg/apis/audit"
-	"k8s.io/apiserver/pkg/audit"
+	utilclock "k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
-	"k8s.io/klog/v2"
-	"k8s.io/utils/clock"
+	"k8s.io/klog"
 )
 
 var errAuthnCrash = apierrors.NewInternalError(errors.New("authentication failed unexpectedly"))
@@ -49,16 +47,6 @@ type cacheRecord struct {
 	resp *authenticator.Response
 	ok   bool
 	err  error
-
-	// this cache assumes token authn has no side-effects or temporal dependence.
-	// neither of these are true for audit annotations set via AddAuditAnnotation.
-	//
-	// for audit annotations, the assumption is that for some period of time (cache TTL),
-	// all requests with the same API audiences and the same bearer token result in the
-	// same annotations.  This may not be true if the authenticator sets an annotation
-	// based on the current time, but that may be okay since cache TTLs are generally
-	// small (seconds).
-	annotations map[string]string
 }
 
 type cachedTokenAuthenticator struct {
@@ -88,10 +76,10 @@ type cache interface {
 
 // New returns a token authenticator that caches the results of the specified authenticator. A ttl of 0 bypasses the cache.
 func New(authenticator authenticator.Token, cacheErrs bool, successTTL, failureTTL time.Duration) authenticator.Token {
-	return newWithClock(authenticator, cacheErrs, successTTL, failureTTL, clock.RealClock{})
+	return newWithClock(authenticator, cacheErrs, successTTL, failureTTL, utilclock.RealClock{})
 }
 
-func newWithClock(authenticator authenticator.Token, cacheErrs bool, successTTL, failureTTL time.Duration, clock clock.Clock) authenticator.Token {
+func newWithClock(authenticator authenticator.Token, cacheErrs bool, successTTL, failureTTL time.Duration, clock utilclock.Clock) authenticator.Token {
 	randomCacheKey := make([]byte, 32)
 	if _, err := rand.Read(randomCacheKey); err != nil {
 		panic(err) // rand should never fail
@@ -121,18 +109,7 @@ func newWithClock(authenticator authenticator.Token, cacheErrs bool, successTTL,
 
 // AuthenticateToken implements authenticator.Token
 func (a *cachedTokenAuthenticator) AuthenticateToken(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-	record := a.doAuthenticateToken(ctx, token)
-	if !record.ok || record.err != nil {
-		return nil, false, record.err
-	}
-	for key, value := range record.annotations {
-		audit.AddAuditAnnotation(ctx, key, value)
-	}
-	return record.resp, true, nil
-}
-
-func (a *cachedTokenAuthenticator) doAuthenticateToken(ctx context.Context, token string) *cacheRecord {
-	doneAuthenticating := stats.authenticating(ctx)
+	doneAuthenticating := stats.authenticating()
 
 	auds, audsOk := authenticator.AudiencesFrom(ctx)
 
@@ -140,27 +117,26 @@ func (a *cachedTokenAuthenticator) doAuthenticateToken(ctx context.Context, toke
 	if record, ok := a.cache.get(key); ok {
 		// Record cache hit
 		doneAuthenticating(true)
-		return record
+		return record.resp, record.ok, record.err
 	}
 
 	// Record cache miss
-	doneBlocking := stats.blocking(ctx)
+	doneBlocking := stats.blocking()
 	defer doneBlocking()
 	defer doneAuthenticating(false)
 
-	c := a.group.DoChan(key, func() (val interface{}, _ error) {
-		// always use one place to read and write the output of AuthenticateToken
-		record := &cacheRecord{}
+	type lookup struct {
+		resp *authenticator.Response
+		ok   bool
+	}
 
-		doneFetching := stats.fetching(ctx)
+	c := a.group.DoChan(key, func() (val interface{}, err error) {
+		doneFetching := stats.fetching()
 		// We're leaving the request handling stack so we need to handle crashes
 		// ourselves. Log a stack trace and return a 500 if something panics.
 		defer func() {
 			if r := recover(); r != nil {
-				// make sure to always return a record
-				record.err = errAuthnCrash
-				val = record
-
+				err = errAuthnCrash
 				// Same as stdlib http server code. Manually allocate stack
 				// trace buffer size to prevent excessively large logs
 				const size = 64 << 10
@@ -168,12 +144,12 @@ func (a *cachedTokenAuthenticator) doAuthenticateToken(ctx context.Context, toke
 				buf = buf[:runtime.Stack(buf, false)]
 				klog.Errorf("%v\n%s", r, buf)
 			}
-			doneFetching(record.err == nil)
+			doneFetching(err == nil)
 		}()
 
 		// Check again for a cached record. We may have raced with a fetch.
 		if record, ok := a.cache.get(key); ok {
-			return record, nil
+			return lookup{record.resp, record.ok}, record.err
 		}
 
 		// Detach the context because the lookup may be shared by multiple callers,
@@ -185,35 +161,29 @@ func (a *cachedTokenAuthenticator) doAuthenticateToken(ctx context.Context, toke
 			ctx = authenticator.WithAudiences(ctx, auds)
 		}
 
-		// since this is shared work between multiple requests, we have no way of knowing if any
-		// particular request supports audit annotations.  thus we always attempt to record them.
-		ev := &auditinternal.Event{Level: auditinternal.LevelMetadata}
-		ctx = audit.WithAuditContext(ctx, &audit.AuditContext{Event: ev})
-
-		record.resp, record.ok, record.err = a.authenticator.AuthenticateToken(ctx, token)
-		record.annotations = ev.Annotations
-
-		if !a.cacheErrs && record.err != nil {
-			return record, nil
+		resp, ok, err := a.authenticator.AuthenticateToken(ctx, token)
+		if !a.cacheErrs && err != nil {
+			return nil, err
 		}
 
 		switch {
-		case record.ok && a.successTTL > 0:
-			a.cache.set(key, record, a.successTTL)
-		case !record.ok && a.failureTTL > 0:
-			a.cache.set(key, record, a.failureTTL)
+		case ok && a.successTTL > 0:
+			a.cache.set(key, &cacheRecord{resp: resp, ok: ok, err: err}, a.successTTL)
+		case !ok && a.failureTTL > 0:
+			a.cache.set(key, &cacheRecord{resp: resp, ok: ok, err: err}, a.failureTTL)
 		}
-
-		return record, nil
+		return lookup{resp, ok}, err
 	})
 
 	select {
 	case result := <-c:
-		// we always set Val and never set Err
-		return result.Val.(*cacheRecord)
+		if result.Err != nil {
+			return nil, false, result.Err
+		}
+		lookup := result.Val.(lookup)
+		return lookup.resp, lookup.ok, nil
 	case <-ctx.Done():
-		// fake a record on context cancel
-		return &cacheRecord{err: ctx.Err()}
+		return nil, false, ctx.Err()
 	}
 }
 

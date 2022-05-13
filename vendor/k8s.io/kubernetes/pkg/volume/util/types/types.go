@@ -22,7 +22,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/mount-utils"
+	"k8s.io/utils/mount"
 )
 
 // UniquePodName defines the type to key pods off of
@@ -36,70 +36,22 @@ type UniquePVCName types.UID
 type GeneratedOperations struct {
 	// Name of operation - could be used for resetting shared exponential backoff
 	OperationName     string
-	OperationFunc     func() (context OperationContext)
+	OperationFunc     func() (eventErr error, detailedErr error)
 	EventRecorderFunc func(*error)
-	CompleteFunc      func(CompleteFuncParam)
-}
-
-type OperationContext struct {
-	EventErr    error
-	DetailedErr error
-	Migrated    bool
-}
-
-func NewOperationContext(eventErr, detailedErr error, migrated bool) OperationContext {
-	return OperationContext{
-		EventErr:    eventErr,
-		DetailedErr: detailedErr,
-		Migrated:    migrated,
-	}
-}
-
-type CompleteFuncParam struct {
-	Err      *error
-	Migrated *bool
+	CompleteFunc      func(*error)
 }
 
 // Run executes the operations and its supporting functions
 func (o *GeneratedOperations) Run() (eventErr, detailedErr error) {
-	var context OperationContext
 	if o.CompleteFunc != nil {
-		c := CompleteFuncParam{
-			Err:      &context.DetailedErr,
-			Migrated: &context.Migrated,
-		}
-		defer o.CompleteFunc(c)
+		defer o.CompleteFunc(&detailedErr)
 	}
 	if o.EventRecorderFunc != nil {
 		defer o.EventRecorderFunc(&eventErr)
 	}
 	// Handle panic, if any, from operationFunc()
 	defer runtime.RecoverFromPanic(&detailedErr)
-
-	context = o.OperationFunc()
-	return context.EventErr, context.DetailedErr
-}
-
-// FailedPrecondition error indicates CSI operation returned failed precondition
-// error
-type FailedPrecondition struct {
-	msg string
-}
-
-func (err *FailedPrecondition) Error() string {
-	return err.msg
-}
-
-// NewFailedPreconditionError returns a new FailedPrecondition error instance
-func NewFailedPreconditionError(msg string) *FailedPrecondition {
-	return &FailedPrecondition{msg: msg}
-}
-
-// IsFailedPreconditionError checks if given error is of type that indicates
-// operation failed with precondition
-func IsFailedPreconditionError(err error) bool {
-	var failedPreconditionError *FailedPrecondition
-	return errors.As(err, &failedPreconditionError)
+	return o.OperationFunc()
 }
 
 // TransientOperationFailure indicates operation failed with a transient error
@@ -148,7 +100,10 @@ func IsOperationFinishedError(err error) bool {
 // on PVC and actual filesystem on disk did not match
 func IsFilesystemMismatchError(err error) bool {
 	mountError := mount.MountError{}
-	return errors.As(err, &mountError) && mountError.Type == mount.FilesystemMismatch
+	if errors.As(err, &mountError) && mountError.Type == mount.FilesystemMismatch {
+		return true
+	}
+	return false
 }
 
 // IsUncertainProgressError checks if given error is of type that indicates
