@@ -24,6 +24,7 @@ jobs:
     steps:
       - name: delete
         run: |
+          echo "new branch test"
           sudo rm -rf /github/actions-runner/_work/scheduler/scheduler/_build
       - name: Checkout
         uses: actions/checkout@v2
