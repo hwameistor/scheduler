@@ -69,7 +69,7 @@ func NewScheduler(f framework.FrameworkHandle) *Scheduler {
 
 	return &Scheduler{
 		lvmScheduler:  NewLVMVolumeScheduler(f, replicaScheduler, hwameiStorCache),
-		diskScheduler: NewDiskVolumeScheduler(f, replicaScheduler, hwameiStorCache),
+		diskScheduler: NewDiskVolumeScheduler(f),
 		pvLister:      f.SharedInformerFactory().Core().V1().PersistentVolumes().Lister(),
 		pvcLister:     f.SharedInformerFactory().Core().V1().PersistentVolumeClaims().Lister(),
 		scLister:      f.SharedInformerFactory().Storage().V1().StorageClasses().Lister(),
