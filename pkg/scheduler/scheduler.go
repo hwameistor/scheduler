@@ -52,12 +52,20 @@ func NewScheduler(f framework.Handle) *Scheduler {
 		log.WithError(err).Fatal("Failed to setup scheme for all resources")
 	}
 
+	apiClient := mgr.GetClient()
 	hwameiStorCache := mgr.GetCache()
+
+	sche := Scheduler{
+		pvLister:  f.SharedInformerFactory().Core().V1().PersistentVolumes().Lister(),
+		pvcLister: f.SharedInformerFactory().Core().V1().PersistentVolumeClaims().Lister(),
+		scLister:  f.SharedInformerFactory().Storage().V1().StorageClasses().Lister(),
+	}
+
 	ctx := signals.SetupSignalHandler()
 	go func() {
-		hwameiStorCache.Start(ctx)
+		mgr.Start(ctx)
 	}()
-	replicaScheduler := lvmscheduler.New(mgr.GetClient(), hwameiStorCache, 1000)
+	replicaScheduler := lvmscheduler.New(apiClient, hwameiStorCache, 1000)
 	// wait for cache synced
 	for {
 		if hwameiStorCache.WaitForCacheSync(ctx) {
@@ -67,13 +75,10 @@ func NewScheduler(f framework.Handle) *Scheduler {
 	}
 	replicaScheduler.Init()
 
-	return &Scheduler{
-		lvmScheduler:  NewLVMVolumeScheduler(f, replicaScheduler, hwameiStorCache),
-		diskScheduler: NewDiskVolumeScheduler(f, replicaScheduler, hwameiStorCache),
-		pvLister:      f.SharedInformerFactory().Core().V1().PersistentVolumes().Lister(),
-		pvcLister:     f.SharedInformerFactory().Core().V1().PersistentVolumeClaims().Lister(),
-		scLister:      f.SharedInformerFactory().Storage().V1().StorageClasses().Lister(),
-	}
+	sche.lvmScheduler = NewLVMVolumeScheduler(f, replicaScheduler, hwameiStorCache, apiClient)
+	sche.diskScheduler = NewDiskVolumeScheduler(f, replicaScheduler, hwameiStorCache, apiClient)
+
+	return &sche
 }
 
 func (s *Scheduler) Filter(pod *corev1.Pod, node *corev1.Node) (bool, error) {

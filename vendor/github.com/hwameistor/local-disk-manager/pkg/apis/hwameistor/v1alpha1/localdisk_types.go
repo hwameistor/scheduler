@@ -91,6 +91,12 @@ const (
 
 	// LocalDiskClaimed represents that the disk is bound to a LDC
 	LocalDiskClaimed LocalDiskClaimState = "Claimed"
+
+	// LocalDiskInUse represents that the disk is in use but not claimed by a LDC
+	LocalDiskInUse LocalDiskClaimState = "Inuse"
+
+	// LocalDiskReserved represents that the disk will be used in the feature
+	LocalDiskReserved LocalDiskClaimState = "Reserved"
 )
 
 // LocalDiskState defines the observed state of the local disk
@@ -170,14 +176,15 @@ type LocalDiskSpec struct {
 // LocalDiskStatus defines the observed state of LocalDisk
 type LocalDiskStatus struct {
 	// State represents the claim state of the disk
-	// +kubebuilder:validation:Enum:=Claimed;Unclaimed;Released
+	// +kubebuilder:validation:Enum:=Claimed;Unclaimed;Released;Reserved;Inuse
 	State LocalDiskClaimState `json:"claimState,omitempty"`
 }
 
+// +genclient
+// +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // LocalDisk is the Schema for the localdisks API
-//+kubebuilder:object:root=true
 //+kubebuilder:resource:scope=Cluster,shortName=ld
 //+kubebuilder:printcolumn:JSONPath=".spec.nodeName",name=NodeMatch,type=string
 //+kubebuilder:printcolumn:JSONPath=".spec.claimRef.name",name=Claim,type=string
@@ -193,7 +200,6 @@ type LocalDisk struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // LocalDiskList contains a list of LocalDisk
-//+kubebuilder:object:root=true
 type LocalDiskList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
