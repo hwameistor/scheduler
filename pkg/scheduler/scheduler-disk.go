@@ -3,26 +3,29 @@ package scheduler
 import (
 	"fmt"
 
-	diskscheduler "github.com/hwameistor/local-storage/pkg/member/controller/scheduler"
+	diskscheduler "github.com/hwameistor/local-storage/pkg/apis/hwameistor/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type DiskVolumeScheduler struct {
-	fHandle framework.Handle
+	fHandle   framework.Handle
+	apiClient client.Client
 
 	csiDriverName    string
 	topoNodeLabelKey string
 
-	replicaScheduler diskscheduler.Scheduler
+	replicaScheduler diskscheduler.VolumeScheduler
 	hwameiStorCache  cache.Cache
 }
 
-func NewDiskVolumeScheduler(f framework.Handle, scheduler diskscheduler.Scheduler, hwameiStorCache cache.Cache) VolumeScheduler {
+func NewDiskVolumeScheduler(f framework.Handle, scheduler diskscheduler.VolumeScheduler, hwameiStorCache cache.Cache, cli client.Client) VolumeScheduler {
 
 	sche := &DiskVolumeScheduler{
 		fHandle:          f,
+		apiClient:        cli,
 		topoNodeLabelKey: "topoKey",
 		csiDriverName:    "disk.hwameistor.io",
 		replicaScheduler: scheduler,
