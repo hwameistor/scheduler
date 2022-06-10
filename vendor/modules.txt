@@ -20,8 +20,8 @@ github.com/blang/semver
 # github.com/cespare/xxhash/v2 v2.1.1
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
-# github.com/container-storage-interface/spec v1.3.0
-## explicit
+# github.com/container-storage-interface/spec v1.5.0
+## explicit; go 1.16
 github.com/container-storage-interface/spec/lib/go/csi
 # github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
 ## explicit
@@ -120,26 +120,11 @@ github.com/grpc-ecosystem/go-grpc-prometheus
 ## explicit; go 1.12
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
-# github.com/hwameistor/local-disk-manager v0.1.4-0.20220525112816-8c969f2c5eb1
+# github.com/hwameistor/local-disk-manager v0.1.4
 ## explicit; go 1.17
 github.com/hwameistor/local-disk-manager/pkg/apis
-github.com/hwameistor/local-disk-manager/pkg/apis/generated/clientset/versioned
-github.com/hwameistor/local-disk-manager/pkg/apis/generated/clientset/versioned/scheme
-github.com/hwameistor/local-disk-manager/pkg/apis/generated/clientset/versioned/typed/hwameistor/v1alpha1
 github.com/hwameistor/local-disk-manager/pkg/apis/hwameistor/v1alpha1
-github.com/hwameistor/local-disk-manager/pkg/builder/localdisknode
-github.com/hwameistor/local-disk-manager/pkg/builder/localdiskvolume
-github.com/hwameistor/local-disk-manager/pkg/controller/localdisk
-github.com/hwameistor/local-disk-manager/pkg/controller/localdiskvolume
-github.com/hwameistor/local-disk-manager/pkg/csi/diskmanager
-github.com/hwameistor/local-disk-manager/pkg/csi/driver/identity
-github.com/hwameistor/local-disk-manager/pkg/csi/scheduler
-github.com/hwameistor/local-disk-manager/pkg/csi/volumemanager
-github.com/hwameistor/local-disk-manager/pkg/filter
-github.com/hwameistor/local-disk-manager/pkg/utils
-github.com/hwameistor/local-disk-manager/pkg/utils/kubernetes
-github.com/hwameistor/local-disk-manager/pkg/utils/sys
-# github.com/hwameistor/local-storage v0.1.7
+# github.com/hwameistor/local-storage v0.1.9
 ## explicit; go 1.17
 github.com/hwameistor/local-storage/pkg/apis
 github.com/hwameistor/local-storage/pkg/apis/hwameistor/v1alpha1
@@ -147,7 +132,6 @@ github.com/hwameistor/local-storage/pkg/exechelper
 github.com/hwameistor/local-storage/pkg/exechelper/basicexecutor
 github.com/hwameistor/local-storage/pkg/exechelper/nsexecutor
 github.com/hwameistor/local-storage/pkg/member/controller/scheduler
-github.com/hwameistor/local-storage/pkg/member/csi
 github.com/hwameistor/local-storage/pkg/member/node/storage
 github.com/hwameistor/local-storage/pkg/utils
 github.com/hwameistor/local-storage/test/e2e/framework
@@ -388,8 +372,6 @@ google.golang.org/grpc/keepalive
 google.golang.org/grpc/metadata
 google.golang.org/grpc/naming
 google.golang.org/grpc/peer
-google.golang.org/grpc/reflection
-google.golang.org/grpc/reflection/grpc_reflection_v1alpha
 google.golang.org/grpc/resolver
 google.golang.org/grpc/resolver/dns
 google.golang.org/grpc/resolver/passthrough
@@ -989,12 +971,7 @@ sigs.k8s.io/controller-runtime/pkg/cache/internal
 sigs.k8s.io/controller-runtime/pkg/client
 sigs.k8s.io/controller-runtime/pkg/client/apiutil
 sigs.k8s.io/controller-runtime/pkg/client/config
-sigs.k8s.io/controller-runtime/pkg/controller
-sigs.k8s.io/controller-runtime/pkg/event
-sigs.k8s.io/controller-runtime/pkg/handler
 sigs.k8s.io/controller-runtime/pkg/healthz
-sigs.k8s.io/controller-runtime/pkg/internal/controller
-sigs.k8s.io/controller-runtime/pkg/internal/controller/metrics
 sigs.k8s.io/controller-runtime/pkg/internal/log
 sigs.k8s.io/controller-runtime/pkg/internal/recorder
 sigs.k8s.io/controller-runtime/pkg/leaderelection
@@ -1002,14 +979,9 @@ sigs.k8s.io/controller-runtime/pkg/log
 sigs.k8s.io/controller-runtime/pkg/manager
 sigs.k8s.io/controller-runtime/pkg/manager/signals
 sigs.k8s.io/controller-runtime/pkg/metrics
-sigs.k8s.io/controller-runtime/pkg/predicate
-sigs.k8s.io/controller-runtime/pkg/ratelimiter
-sigs.k8s.io/controller-runtime/pkg/reconcile
 sigs.k8s.io/controller-runtime/pkg/recorder
 sigs.k8s.io/controller-runtime/pkg/runtime/inject
 sigs.k8s.io/controller-runtime/pkg/scheme
-sigs.k8s.io/controller-runtime/pkg/source
-sigs.k8s.io/controller-runtime/pkg/source/internal
 sigs.k8s.io/controller-runtime/pkg/webhook
 sigs.k8s.io/controller-runtime/pkg/webhook/admission
 sigs.k8s.io/controller-runtime/pkg/webhook/internal/certwatcher
