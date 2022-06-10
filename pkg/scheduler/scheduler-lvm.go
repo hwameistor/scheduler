@@ -96,7 +96,7 @@ func (s *LVMVolumeScheduler) filterForExistingLocalVolumes(lvs []string, node *c
 }
 
 func (s *LVMVolumeScheduler) filterForNewPVCs(pvcs []*corev1.PersistentVolumeClaim, node *corev1.Node) (bool, error) {
-
+	
 	if len(pvcs) == 0 {
 		return true, nil
 	}
