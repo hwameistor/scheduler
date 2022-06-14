@@ -50,21 +50,17 @@ type LocalStorageMember interface {
 type ControllerManager interface {
 	Run(stopCh <-chan struct{})
 
-	VolumeScheduler() apisv1alpha1.VolumeScheduler
-
-	VolumeGroupManager() apisv1alpha1.VolumeGroupManager
-
 	ReconcileNode(node *apisv1alpha1.LocalStorageNode)
 
 	ReconcileVolume(vol *apisv1alpha1.LocalVolume)
 
-	ReconcileVolumeGroup(volGroup *apisv1alpha1.LocalVolumeGroup)
+	ReconcileVolumeGroup(vol *apisv1alpha1.LocalVolumeGroup)
 
-	ReconcileVolumeExpand(expand *apisv1alpha1.LocalVolumeExpand)
+	ReconcileVolumeExpand(vol *apisv1alpha1.LocalVolumeExpand)
 
-	ReconcileVolumeMigrate(migrate *apisv1alpha1.LocalVolumeMigrate)
+	ReconcileVolumeMigrate(vol *apisv1alpha1.LocalVolumeMigrate)
 
-	ReconcileVolumeConvert(convert *apisv1alpha1.LocalVolumeConvert)
+	ReconcileVolumeConvert(vol *apisv1alpha1.LocalVolumeConvert)
 }
 
 // NodeManager interface

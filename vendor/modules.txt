@@ -124,7 +124,7 @@ github.com/hashicorp/golang-lru/simplelru
 ## explicit; go 1.17
 github.com/hwameistor/local-disk-manager/pkg/apis
 github.com/hwameistor/local-disk-manager/pkg/apis/hwameistor/v1alpha1
-# github.com/hwameistor/local-storage v0.1.9
+# github.com/hwameistor/local-storage v0.1.7
 ## explicit; go 1.17
 github.com/hwameistor/local-storage/pkg/apis
 github.com/hwameistor/local-storage/pkg/apis/hwameistor/v1alpha1

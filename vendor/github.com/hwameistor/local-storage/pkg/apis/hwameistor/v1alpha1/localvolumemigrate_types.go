@@ -42,8 +42,6 @@ type LocalVolumeMigrateStatus struct {
 	Message string `json:"message,omitempty"`
 }
 
-// +genclient
-// +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // LocalVolumeMigrate is the Schema for the localvolumemigrates API
