@@ -3,7 +3,7 @@ name: HwameiStor pr
 on:
   pull_request:
     branches:
-      - *
+      - support-k8s-version-before-1.21.1
 
 jobs:
   pull_request:
