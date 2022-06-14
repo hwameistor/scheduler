@@ -82,7 +82,7 @@ func NewScheduler(f framework.FrameworkHandle) *Scheduler {
 	replicaScheduler.Init()
 
 	sche.lvmScheduler = NewLVMVolumeScheduler(f, replicaScheduler, hwameiStorCache, apiClient)
-	sche.diskScheduler = NewDiskVolumeScheduler(f, replicaScheduler, hwameiStorCache, apiClient)
+	sche.diskScheduler = NewDiskVolumeScheduler(f)
 
 	return &sche
 }
