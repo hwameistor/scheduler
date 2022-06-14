@@ -164,3 +164,11 @@ func buildStoragePoolName(poolClass string, poolType string) (string, error) {
 
 	return "", fmt.Errorf("invalid pool info")
 }
+
+func (s *LVMVolumeScheduler) Reserve(pendingPVCs []*corev1.PersistentVolumeClaim, node string) error {
+	return nil
+}
+
+func (s *LVMVolumeScheduler) Unreserve(pendingPVCs []*corev1.PersistentVolumeClaim, node string) error {
+	return nil
+}

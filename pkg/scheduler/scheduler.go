@@ -82,6 +82,24 @@ func NewScheduler(f framework.FrameworkHandle) *Scheduler {
 	}
 }
 
+func (s *Scheduler) Reserve(pod *corev1.Pod, node string) error {
+	_, _, _, diskNewPVCs, err := s.getHwameiStorPVCs(pod)
+	if err != nil {
+		return err
+	}
+
+	return s.diskScheduler.Reserve(diskNewPVCs, node)
+}
+
+func (s *Scheduler) Unreserve(pod *corev1.Pod, node string) error {
+	_, _, _, diskNewPVCs, err := s.getHwameiStorPVCs(pod)
+	if err != nil {
+		return err
+	}
+
+	return s.diskScheduler.Unreserve(diskNewPVCs, node)
+}
+
 func (s *Scheduler) Filter(pod *corev1.Pod, node *corev1.Node) (bool, error) {
 	lvmProvisionedPVCs, lvmNewPVCs, diskProvisionedPVCs, diskNewPVCs, err := s.getHwameiStorPVCs(pod)
 	if err != nil {

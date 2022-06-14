@@ -120,7 +120,7 @@ github.com/grpc-ecosystem/go-grpc-prometheus
 ## explicit; go 1.12
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
-# github.com/hwameistor/local-disk-manager v0.1.4-0.20220525112816-8c969f2c5eb1
+# github.com/hwameistor/local-disk-manager v0.1.6-0.20220614022819-9304b29949d2
 ## explicit; go 1.17
 github.com/hwameistor/local-disk-manager/pkg/apis
 github.com/hwameistor/local-disk-manager/pkg/apis/generated/clientset/versioned
