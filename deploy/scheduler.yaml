@@ -16,6 +16,9 @@ data:
       filter:
         enabled:
           - name: hwameistor-scheduler-plugin
+      reserve:
+        enabled:
+          - name: hwameistor-scheduler-plugin
 ---
 
 apiVersion: apps/v1
