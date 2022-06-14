@@ -7,7 +7,6 @@ import (
 
 	localstorageapis "github.com/hwameistor/local-storage/pkg/apis"
 	localstoragev1alpha1 "github.com/hwameistor/local-storage/pkg/apis/hwameistor/v1alpha1"
-	lvmscheduler "github.com/hwameistor/local-storage/pkg/member/controller/scheduler"
 
 	log "github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
@@ -15,23 +14,27 @@ import (
 	storagev1lister "k8s.io/client-go/listers/storage/v1"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type LVMVolumeScheduler struct {
-	fHandle framework.FrameworkHandle
+	fHandle   framework.FrameworkHandle
+	apiClient client.Client
 
 	csiDriverName    string
 	topoNodeLabelKey string
 
-	replicaScheduler lvmscheduler.Scheduler
+	replicaScheduler localstoragev1alpha1.VolumeScheduler
 	hwameiStorCache  cache.Cache
 
 	scLister storagev1lister.StorageClassLister
 }
 
-func NewLVMVolumeScheduler(f framework.FrameworkHandle, scheduler lvmscheduler.Scheduler, hwameiStorCache cache.Cache) VolumeScheduler {
+func NewLVMVolumeScheduler(f framework.FrameworkHandle, scheduler localstoragev1alpha1.VolumeScheduler, hwameiStorCache cache.Cache, cli client.Client) VolumeScheduler {
+
 	sche := &LVMVolumeScheduler{
 		fHandle:          f,
+		apiClient:        cli,
 		topoNodeLabelKey: localstorageapis.TopologyNodeKey,
 		csiDriverName:    localstoragev1alpha1.CSIDriverName,
 		replicaScheduler: scheduler,
@@ -94,38 +97,32 @@ func (s *LVMVolumeScheduler) filterForExistingLocalVolumes(lvs []string, node *c
 
 func (s *LVMVolumeScheduler) filterForNewPVCs(pvcs []*corev1.PersistentVolumeClaim, node *corev1.Node) (bool, error) {
 
-	fmt.Printf("debug filterForNewPVCs pvcs = %+v", pvcs)
-
 	if len(pvcs) == 0 {
 		return true, nil
 	}
-
-	lvGroup := []*localstoragev1alpha1.LocalVolume{}
+	for _, pvc := range pvcs {
+		log.WithField("pvc", pvc.Name).WithField("node", node.Name).Debug("New PVC")
+	}
+	lvs := []*localstoragev1alpha1.LocalVolume{}
 	for i := range pvcs {
 		lv, err := s.constructLocalVolumeForPVC(pvcs[i])
-		fmt.Printf("debug constructLocalVolumeForPVC lv = %+v, pvcs[i] = %+v", lv, pvcs[i])
 		if err != nil {
 			return false, err
 		}
-		lvGroup = append(lvGroup, lv)
+		lvs = append(lvs, lv)
 	}
-	// currently, just handle only one PVC.
 
-	nodeCandidates, err := s.replicaScheduler.GetNodeCandidates(lvGroup[0])
-	fmt.Printf("debug filterForNewPVCs nodeCandidates = %+v, node.Name= %+v, lvGroup[0] = %+v", nodeCandidates, node.Name, lvGroup[0])
-	if err != nil {
-		return false, err
+	qualifiedNodes := s.replicaScheduler.GetNodeCandidates(lvs)
+	if len(qualifiedNodes) < int(lvs[0].Spec.ReplicaNumber) {
+		return false, fmt.Errorf("no enough nodes")
 	}
-	for _, n := range nodeCandidates {
-		if n.Name == node.Name {
+	for _, qn := range qualifiedNodes {
+		if qn.Name == node.Name {
 			return true, nil
 		}
 	}
-	//nodeCandidates, err := s.replicaScheduler.GetNodeCandidates()
-	// Pending PVC is still waiting for the volume to be created as soon as the node is assigned to the pod.
-	// So, should check if the volume can be allocated on this node or not
 
-	return false, fmt.Errorf("no valid node")
+	return false, nil
 }
 
 func (s *LVMVolumeScheduler) constructLocalVolumeForPVC(pvc *corev1.PersistentVolumeClaim) (*localstoragev1alpha1.LocalVolume, error) {
@@ -163,4 +160,12 @@ func buildStoragePoolName(poolClass string, poolType string) (string, error) {
 	}
 
 	return "", fmt.Errorf("invalid pool info")
+}
+
+func (s *LVMVolumeScheduler) Reserve(pendingPVCs []*corev1.PersistentVolumeClaim, node string) error {
+	return nil
+}
+
+func (s *LVMVolumeScheduler) Unreserve(pendingPVCs []*corev1.PersistentVolumeClaim, node string) error {
+	return nil
 }

@@ -20,6 +20,9 @@ github.com/blang/semver
 # github.com/cespare/xxhash/v2 v2.1.1
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
+# github.com/container-storage-interface/spec v1.5.0
+## explicit; go 1.16
+github.com/container-storage-interface/spec/lib/go/csi
 # github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
 ## explicit
 github.com/coreos/go-systemd/daemon
@@ -82,10 +85,12 @@ github.com/golang/mock/gomock
 # github.com/golang/protobuf v1.5.2
 ## explicit; go 1.9
 github.com/golang/protobuf/proto
+github.com/golang/protobuf/protoc-gen-go/descriptor
 github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
+github.com/golang/protobuf/ptypes/wrappers
 # github.com/google/go-cmp v0.5.5
 ## explicit; go 1.8
 github.com/google/go-cmp/cmp
@@ -115,11 +120,11 @@ github.com/grpc-ecosystem/go-grpc-prometheus
 ## explicit; go 1.12
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
-# github.com/hwameistor/local-disk-manager v0.1.0
+# github.com/hwameistor/local-disk-manager v0.1.6-0.20220614022819-9304b29949d2
 ## explicit; go 1.17
 github.com/hwameistor/local-disk-manager/pkg/apis
 github.com/hwameistor/local-disk-manager/pkg/apis/hwameistor/v1alpha1
-# github.com/hwameistor/local-storage v0.1.7
+# github.com/hwameistor/local-storage v0.1.9
 ## explicit; go 1.17
 github.com/hwameistor/local-storage/pkg/apis
 github.com/hwameistor/local-storage/pkg/apis/hwameistor/v1alpha1
@@ -406,6 +411,7 @@ google.golang.org/protobuf/types/descriptorpb
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb
+google.golang.org/protobuf/types/known/wrapperspb
 # gopkg.in/inf.v0 v0.9.1
 ## explicit
 gopkg.in/inf.v0

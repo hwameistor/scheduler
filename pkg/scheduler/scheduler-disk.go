@@ -3,25 +3,29 @@ package scheduler
 import (
 	"fmt"
 
-	diskscheduler "github.com/hwameistor/local-storage/pkg/member/controller/scheduler"
+	diskscheduler "github.com/hwameistor/local-storage/pkg/apis/hwameistor/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type DiskVolumeScheduler struct {
-	fHandle framework.FrameworkHandle
+	fHandle   framework.FrameworkHandle
+	apiClient client.Client
 
 	csiDriverName    string
 	topoNodeLabelKey string
 
-	replicaScheduler diskscheduler.Scheduler
+	replicaScheduler diskscheduler.VolumeScheduler
 	hwameiStorCache  cache.Cache
 }
 
-func NewDiskVolumeScheduler(f framework.FrameworkHandle, scheduler diskscheduler.Scheduler, hwameiStorCache cache.Cache) VolumeScheduler {
+func NewDiskVolumeScheduler(f framework.FrameworkHandle, scheduler diskscheduler.VolumeScheduler, hwameiStorCache cache.Cache, cli client.Client) VolumeScheduler {
+
 	sche := &DiskVolumeScheduler{
 		fHandle:          f,
+		apiClient:        cli,
 		topoNodeLabelKey: "topoKey",
 		csiDriverName:    "disk.hwameistor.io",
 		replicaScheduler: scheduler,
@@ -48,6 +52,7 @@ func (s *DiskVolumeScheduler) Filter(lvs []string, pendingPVCs []*v1.PersistentV
 }
 
 func (s *DiskVolumeScheduler) filterForExistingLocalVolumes(lvs []string, node *v1.Node) (bool, error) {
+
 	if len(lvs) == 0 {
 		return true, nil
 	}
@@ -58,6 +63,7 @@ func (s *DiskVolumeScheduler) filterForExistingLocalVolumes(lvs []string, node *
 }
 
 func (s *DiskVolumeScheduler) filterForNewPVCs(pvcs []*v1.PersistentVolumeClaim, node *v1.Node) (bool, error) {
+
 	if len(pvcs) == 0 {
 		return true, nil
 	}

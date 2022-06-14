@@ -72,6 +72,47 @@ func (p *Plugin) Filter(ctx context.Context, state *framework.CycleState, pod *v
 	return framework.NewStatus(framework.Unschedulable, "can not be scheduled on this node")
 }
 
+// Reserve is the functions invoked by the framework at "reserve" extension point.
+func (p *Plugin) Reserve(ctx context.Context, state *framework.CycleState, pod *v1.Pod, node string) *framework.Status {
+	if pod == nil {
+		return framework.NewStatus(framework.Unschedulable, "no pod specified")
+	}
+	if node == "" {
+		return framework.NewStatus(framework.Unschedulable, "no node specified")
+	}
+	logCtx := log.Fields{"pod": pod.Name, "node": node}
+	log.WithFields(logCtx).Debug("reserving resource for a pod")
+
+	err := p.scheduler.Reserve(pod, node)
+	if err != nil {
+		log.WithFields(logCtx).WithError(err).Error("failed to reserve resource")
+		return framework.NewStatus(framework.Error)
+	}
+
+	return framework.NewStatus(framework.Success)
+}
+
+// Unreserve is the functions invoked by the framework at "unreserve" extension point.
+func (p *Plugin) Unreserve(ctx context.Context, state *framework.CycleState, pod *v1.Pod, node string) *framework.Status {
+	if pod == nil {
+		return framework.NewStatus(framework.Unschedulable, "no pod specified")
+	}
+	if node == "" {
+		return framework.NewStatus(framework.Unschedulable, "no node specified")
+	}
+	logCtx := log.Fields{"pod": pod.Name, "node": node}
+	log.WithFields(logCtx).Debug("unreserving resource for a pod")
+
+	err := p.scheduler.Unreserve(pod, node)
+	if err != nil {
+		log.WithFields(logCtx).WithError(err).Error("failed to unreserve resource")
+		return framework.NewStatus(framework.Error)
+	}
+
+	return framework.NewStatus(framework.Success)
+}
+
 func (p *Plugin) filter(pod *v1.Pod, node *v1.Node) (bool, error) {
-	return p.scheduler.Filter(pod, node)
+	return p.scheduler.
+		Filter(pod, node)
 }

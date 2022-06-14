@@ -7,18 +7,18 @@ data:
   scheduler-config.yaml: |
     apiVersion: kubescheduler.config.k8s.io/v1alpha1
     kind: KubeSchedulerConfiguration
-    profiles:
-      - schedulerName: hwameistor-scheduler
-        plugins:
-          filter:
-            enabled:
-            - name: hwameistor-scheduler-plugin
+    schedulerName: hwameistor-scheduler
     leaderElection:
       leaderElect: true
       lockObjectName: hwameistor-scheduler
-    clientConnection:
-      kubeconfig: /etc/kubernetes/scheduler.conf
-
+      resourceLock: leases
+    plugins:
+      filter:
+        enabled:
+          - name: hwameistor-scheduler-plugin
+      reserve:
+        enabled:
+          - name: hwameistor-scheduler-plugin
 ---
 
 apiVersion: apps/v1

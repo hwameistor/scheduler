@@ -88,6 +88,8 @@ github.com/cockroachdb/datadriven v0.0.0-20190809214429-80d97fb3cbaa/go.mod h1:z
 github.com/codegangsta/negroni v1.0.0/go.mod h1:v0y3T5G7Y1UlFfyxFn/QLRU4a2EuNau2iZY63YTKWo0=
 github.com/container-storage-interface/spec v1.1.0/go.mod h1:6URME8mwIBbpVyZV93Ce5St17xBiQJQY67NDsuohiy4=
 github.com/container-storage-interface/spec v1.2.0/go.mod h1:6URME8mwIBbpVyZV93Ce5St17xBiQJQY67NDsuohiy4=
+github.com/container-storage-interface/spec v1.5.0 h1:lvKxe3uLgqQeVQcrnL2CPQKISoKjTJxojEs9cBk+HXo=
+github.com/container-storage-interface/spec v1.5.0/go.mod h1:8K96oQNkJ7pFcC2R9Z1ynGGBB1I93kcS6PGg3SsOk8s=
 github.com/containerd/console v0.0.0-20170925154832-84eeaae905fa/go.mod h1:Tj/on1eG8kiEhd0+fhSDzsPAFESxzBBvdyEgyryXffw=
 github.com/containerd/containerd v1.0.2/go.mod h1:bC6axHOhabU15QhwfG7w5PipXdVtMXFTttgp+kVtyUA=
 github.com/containerd/typeurl v0.0.0-20190228175220-2a93cfde8c20/go.mod h1:Cm3kwCdlkCfMSHURc+r6fwoGH6/F1hH3S4sg0rLFWPc=
@@ -347,8 +349,8 @@ github.com/hashicorp/hcl v1.0.0/go.mod h1:E5yfLk+7swimpb2L/Alb/PJmXilQ/rhwaUYs4T
 github.com/heketi/heketi v9.0.1-0.20190917153846-c2e2a4ab7ab9+incompatible/go.mod h1:bB9ly3RchcQqsQ9CpyaQwvva7RS5ytVoSoholZQON6o=
 github.com/heketi/tests v0.0.0-20151005000721-f3775cbcefd6/go.mod h1:xGMAM8JLi7UkZt1i4FQeQy0R2T8GLUwQhOP5M1gBhy4=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
-github.com/hwameistor/local-disk-manager v0.1.0 h1:tJ/sKf8koyyrNIackJS9JfjkncPp6WeIdTnziAxXVYY=
-github.com/hwameistor/local-disk-manager v0.1.0/go.mod h1:0wq9bcLopREJG2xdiytZqOBxwuFnuTLLPBTvgWUdDJA=
+github.com/hwameistor/local-disk-manager v0.1.6-0.20220614022819-9304b29949d2 h1:Ego8kyDJU9lnvJFekzqTQFrvveoP/uicaLgkItRXLyI=
+github.com/hwameistor/local-disk-manager v0.1.6-0.20220614022819-9304b29949d2/go.mod h1:zZ+oaZ9JDqbMPXI7RZylw7VfZQUtGv6KsVNfXHApzPY=
 github.com/hwameistor/local-storage v0.1.7 h1:Nf4H5BHpKy86kUD1W8OAbPj7Rf7zC882x/N3ZZL15lc=
 github.com/hwameistor/local-storage v0.1.7/go.mod h1:6xx9MMAmU/nz9O+wDEYuY3hmlnzghLyTPHDROx8lLBc=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=

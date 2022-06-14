@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	localdiskmanagerv1alpha1 "github.com/hwameistor/local-disk-manager/pkg/apis/hwameistor/v1alpha1"
 	localstoragev1alpha1 "github.com/hwameistor/local-storage/pkg/apis/hwameistor/v1alpha1"
 	lvmscheduler "github.com/hwameistor/local-storage/pkg/member/controller/scheduler"
 
@@ -49,15 +50,28 @@ func NewScheduler(f framework.FrameworkHandle) *Scheduler {
 
 	// Setup Scheme for all resources of Local Storage
 	if err := localstoragev1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
-		log.WithError(err).Fatal("Failed to setup scheme for all resources")
+		log.WithError(err).Fatal("Failed to setup scheme for local-storage resources")
 	}
 
+	// Setup Scheme for all resources of Local Disk Manager
+	if err := localdiskmanagerv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
+		log.WithError(err).Fatal("Failed to setup scheme for local-disk-manager resources")
+	}
+
+	apiClient := mgr.GetClient()
 	hwameiStorCache := mgr.GetCache()
+
+	sche := Scheduler{
+		pvLister:  f.SharedInformerFactory().Core().V1().PersistentVolumes().Lister(),
+		pvcLister: f.SharedInformerFactory().Core().V1().PersistentVolumeClaims().Lister(),
+		scLister:  f.SharedInformerFactory().Storage().V1().StorageClasses().Lister(),
+	}
+
 	ctx := signals.SetupSignalHandler()
 	go func() {
-		hwameiStorCache.Start(ctx)
+		mgr.Start(ctx)
 	}()
-	replicaScheduler := lvmscheduler.New(mgr.GetClient(), hwameiStorCache, MaxHAVolumeCount)
+	replicaScheduler := lvmscheduler.New(apiClient, hwameiStorCache, 1000)
 	// wait for cache synced
 	for {
 		if hwameiStorCache.WaitForCacheSync(ctx) {
@@ -67,13 +81,28 @@ func NewScheduler(f framework.FrameworkHandle) *Scheduler {
 	}
 	replicaScheduler.Init()
 
-	return &Scheduler{
-		lvmScheduler:  NewLVMVolumeScheduler(f, replicaScheduler, hwameiStorCache),
-		diskScheduler: NewDiskVolumeScheduler(f, replicaScheduler, hwameiStorCache),
-		pvLister:      f.SharedInformerFactory().Core().V1().PersistentVolumes().Lister(),
-		pvcLister:     f.SharedInformerFactory().Core().V1().PersistentVolumeClaims().Lister(),
-		scLister:      f.SharedInformerFactory().Storage().V1().StorageClasses().Lister(),
+	sche.lvmScheduler = NewLVMVolumeScheduler(f, replicaScheduler, hwameiStorCache, apiClient)
+	sche.diskScheduler = NewDiskVolumeScheduler(f, replicaScheduler, hwameiStorCache, apiClient)
+
+	return &sche
+}
+
+func (s *Scheduler) Reserve(pod *corev1.Pod, node string) error {
+	_, _, _, diskNewPVCs, err := s.getHwameiStorPVCs(pod)
+	if err != nil {
+		return err
 	}
+
+	return s.diskScheduler.Reserve(diskNewPVCs, node)
+}
+
+func (s *Scheduler) Unreserve(pod *corev1.Pod, node string) error {
+	_, _, _, diskNewPVCs, err := s.getHwameiStorPVCs(pod)
+	if err != nil {
+		return err
+	}
+
+	return s.diskScheduler.Unreserve(diskNewPVCs, node)
 }
 
 func (s *Scheduler) Filter(pod *corev1.Pod, node *corev1.Node) (bool, error) {
