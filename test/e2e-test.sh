@@ -60,7 +60,7 @@ done
 ##
 date=$(date +%Y%m%d%H%M)
 docker tag 10.6.170.180/hwameistor/scheduler:99.9-dev 10.6.170.180/hwameistor/scheduler:$date
-docker pull 10.6.170.180/hwameistor/scheduler:$tag-$date
+docker push 10.6.170.180/hwameistor/scheduler:$tag-$date
 
 sed -i '/.*ghcr.io*/c\hwameistorImageRegistry: 10.6.170.180' test/helm-charts/charts/hwameistor/values.yaml
 sed -i '/hwameistor\/scheduler/{n;d}' test/helm-charts/charts/hwameistor/values.yaml
