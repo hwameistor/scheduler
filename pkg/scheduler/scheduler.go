@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	localdiskmanagerv1alpha1 "github.com/hwameistor/local-disk-manager/pkg/apis/hwameistor/v1alpha1"
 	localstoragev1alpha1 "github.com/hwameistor/local-storage/pkg/apis/hwameistor/v1alpha1"
 	lvmscheduler "github.com/hwameistor/local-storage/pkg/member/controller/scheduler"
 
@@ -52,6 +53,11 @@ func NewScheduler(f framework.Handle) *Scheduler {
 		log.WithError(err).Fatal("Failed to setup scheme for all resources")
 	}
 
+	// Setup Scheme for all resources of Local Disk Manager
+	if err := localdiskmanagerv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
+		log.WithError(err).Fatal("Failed to setup scheme for local-disk-manager resources")
+	}
+
 	apiClient := mgr.GetClient()
 	hwameiStorCache := mgr.GetCache()
 
@@ -76,7 +82,7 @@ func NewScheduler(f framework.Handle) *Scheduler {
 	replicaScheduler.Init()
 
 	sche.lvmScheduler = NewLVMVolumeScheduler(f, replicaScheduler, hwameiStorCache, apiClient)
-	sche.diskScheduler = NewDiskVolumeScheduler(f, replicaScheduler, hwameiStorCache, apiClient)
+	sche.diskScheduler = NewDiskVolumeScheduler(f)
 
 	return &sche
 }
@@ -124,6 +130,24 @@ func (s *Scheduler) Filter(pod *corev1.Pod, node *corev1.Node) (bool, error) {
 	}
 
 	return s.diskScheduler.Filter(existingLocalVolumes, diskNewPVCs, node)
+}
+
+func (s *Scheduler) Reserve(pod *corev1.Pod, node string) error {
+	_, _, _, diskNewPVCs, err := s.getHwameiStorPVCs(pod)
+	if err != nil {
+		return err
+	}
+
+	return s.diskScheduler.Reserve(diskNewPVCs, node)
+}
+
+func (s *Scheduler) Unreserve(pod *corev1.Pod, node string) error {
+	_, _, _, diskNewPVCs, err := s.getHwameiStorPVCs(pod)
+	if err != nil {
+		return err
+	}
+
+	return s.diskScheduler.Unreserve(diskNewPVCs, node)
 }
 
 // return: lvmProvisionedClaims, lvmNewClaims, diskProvisionedClaims, diskNewClaims, error

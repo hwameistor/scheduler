@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/golang/mock v1.6.0
-	github.com/hwameistor/local-disk-manager v0.1.4
+	github.com/hwameistor/local-disk-manager v0.1.6-0.20220617103812-3ac5af07fed8
 	github.com/hwameistor/local-storage v0.1.9
 	github.com/onsi/ginkgo/v2 v2.1.3
 	github.com/onsi/gomega v1.17.0
@@ -41,6 +41,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.19.5 // indirect
 	github.com/go-openapi/swag v0.19.14 // indirect
+	github.com/gofrs/uuid v4.2.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect

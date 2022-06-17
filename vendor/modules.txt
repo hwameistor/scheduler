@@ -68,6 +68,9 @@ github.com/go-openapi/jsonreference
 # github.com/go-openapi/swag v0.19.14
 ## explicit; go 1.11
 github.com/go-openapi/swag
+# github.com/gofrs/uuid v4.2.0+incompatible
+## explicit
+github.com/gofrs/uuid
 # github.com/gogo/protobuf v1.3.2
 ## explicit; go 1.15
 github.com/gogo/protobuf/gogoproto
@@ -120,10 +123,25 @@ github.com/grpc-ecosystem/go-grpc-prometheus
 github.com/grpc-ecosystem/grpc-gateway/internal
 github.com/grpc-ecosystem/grpc-gateway/runtime
 github.com/grpc-ecosystem/grpc-gateway/utilities
-# github.com/hwameistor/local-disk-manager v0.1.4
+# github.com/hwameistor/local-disk-manager v0.1.6-0.20220617103812-3ac5af07fed8
 ## explicit; go 1.17
 github.com/hwameistor/local-disk-manager/pkg/apis
+github.com/hwameistor/local-disk-manager/pkg/apis/generated/clientset/versioned
+github.com/hwameistor/local-disk-manager/pkg/apis/generated/clientset/versioned/scheme
+github.com/hwameistor/local-disk-manager/pkg/apis/generated/clientset/versioned/typed/hwameistor/v1alpha1
 github.com/hwameistor/local-disk-manager/pkg/apis/hwameistor/v1alpha1
+github.com/hwameistor/local-disk-manager/pkg/builder/localdisknode
+github.com/hwameistor/local-disk-manager/pkg/builder/localdiskvolume
+github.com/hwameistor/local-disk-manager/pkg/csi/diskmanager
+github.com/hwameistor/local-disk-manager/pkg/csi/driver/identity
+github.com/hwameistor/local-disk-manager/pkg/csi/scheduler
+github.com/hwameistor/local-disk-manager/pkg/csi/volumemanager
+github.com/hwameistor/local-disk-manager/pkg/filter
+github.com/hwameistor/local-disk-manager/pkg/handler/localdisk
+github.com/hwameistor/local-disk-manager/pkg/handler/localdiskvolume
+github.com/hwameistor/local-disk-manager/pkg/utils
+github.com/hwameistor/local-disk-manager/pkg/utils/kubernetes
+github.com/hwameistor/local-disk-manager/pkg/utils/sys
 # github.com/hwameistor/local-storage v0.1.9
 ## explicit; go 1.17
 github.com/hwameistor/local-storage/pkg/apis
@@ -132,6 +150,7 @@ github.com/hwameistor/local-storage/pkg/exechelper
 github.com/hwameistor/local-storage/pkg/exechelper/basicexecutor
 github.com/hwameistor/local-storage/pkg/exechelper/nsexecutor
 github.com/hwameistor/local-storage/pkg/member/controller/scheduler
+github.com/hwameistor/local-storage/pkg/member/csi
 github.com/hwameistor/local-storage/pkg/member/node/storage
 github.com/hwameistor/local-storage/pkg/utils
 github.com/hwameistor/local-storage/test/e2e/framework
@@ -476,6 +495,8 @@ google.golang.org/grpc/internal/transport/networktype
 google.golang.org/grpc/keepalive
 google.golang.org/grpc/metadata
 google.golang.org/grpc/peer
+google.golang.org/grpc/reflection
+google.golang.org/grpc/reflection/grpc_reflection_v1alpha
 google.golang.org/grpc/resolver
 google.golang.org/grpc/resolver/manual
 google.golang.org/grpc/serviceconfig
@@ -1211,6 +1232,7 @@ k8s.io/utils/internal/third_party/forked/golang/net
 k8s.io/utils/io
 k8s.io/utils/keymutex
 k8s.io/utils/lru
+k8s.io/utils/mount
 k8s.io/utils/net
 k8s.io/utils/nsenter
 k8s.io/utils/path
@@ -1242,6 +1264,7 @@ sigs.k8s.io/controller-runtime/pkg/log
 sigs.k8s.io/controller-runtime/pkg/manager
 sigs.k8s.io/controller-runtime/pkg/manager/signals
 sigs.k8s.io/controller-runtime/pkg/metrics
+sigs.k8s.io/controller-runtime/pkg/reconcile
 sigs.k8s.io/controller-runtime/pkg/recorder
 sigs.k8s.io/controller-runtime/pkg/runtime/inject
 sigs.k8s.io/controller-runtime/pkg/scheme
