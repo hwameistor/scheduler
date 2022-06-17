@@ -15,7 +15,7 @@ data:
             - name: hwameistor-scheduler-plugin
     leaderElection:
       leaderElect: true
-      lockObjectName: hwameistor-scheduler
+      resourceName: hwameistor-scheduler
     clientConnection:
       kubeconfig: /etc/kubernetes/scheduler.conf
 
