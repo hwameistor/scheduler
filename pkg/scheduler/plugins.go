@@ -67,7 +67,7 @@ func (p *Plugin) Filter(ctx context.Context, state *framework.CycleState, pod *v
 		return framework.NewStatus(framework.Success, "can be scheduled on this node")
 	}
 	log.WithFields(log.Fields{"pod": pod.Name, "node": node.Node().Name}).Debug("Filtered out the node")
-	return framework.NewStatus(framework.Unschedulable, err.Error())
+	return framework.NewStatus(framework.Unschedulable, "Insufficient storage capacity")
 }
 
 // Reserve is the functions invoked by the framework at "reserve" extension point.
