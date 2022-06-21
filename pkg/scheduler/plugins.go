@@ -93,12 +93,12 @@ func (p *Plugin) Reserve(ctx context.Context, state *framework.CycleState, pod *
 }
 
 // Unreserve is the functions invoked by the framework at "unreserve" extension point.
-func (p *Plugin) Unreserve(ctx context.Context, state *framework.CycleState, pod *v1.Pod, node string) *framework.Status {
+func (p *Plugin) Unreserve(ctx context.Context, state *framework.CycleState, pod *v1.Pod, node string) {
 	if pod == nil {
-		return framework.NewStatus(framework.Unschedulable, "no pod specified")
+		log.Debug("no pod specified")
 	}
 	if node == "" {
-		return framework.NewStatus(framework.Unschedulable, "no node specified")
+		log.Debug("no node specified")
 	}
 	logCtx := log.Fields{"pod": pod.Name, "node": node}
 	log.WithFields(logCtx).Debug("unreserving resource for a pod")
@@ -106,10 +106,8 @@ func (p *Plugin) Unreserve(ctx context.Context, state *framework.CycleState, pod
 	err := p.scheduler.Unreserve(pod, node)
 	if err != nil {
 		log.WithFields(logCtx).WithError(err).Error("failed to unreserve resource")
-		return framework.NewStatus(framework.Error)
 	}
-
-	return framework.NewStatus(framework.Success)
+	return
 }
 
 func (p *Plugin) filter(pod *v1.Pod, node *v1.Node) (bool, error) {
