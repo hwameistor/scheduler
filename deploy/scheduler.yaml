@@ -13,6 +13,9 @@ data:
           filter:
             enabled:
             - name: hwameistor-scheduler-plugin
+          reserve:
+            enabled:
+            - name: hwameistor-scheduler-plugin
     leaderElection:
       leaderElect: true
       resourceName: hwameistor-scheduler
