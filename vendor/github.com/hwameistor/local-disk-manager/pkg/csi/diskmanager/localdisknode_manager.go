@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"sync"
 
+	localdisk2 "github.com/hwameistor/local-disk-manager/pkg/handler/localdisk"
+
 	"k8s.io/apimachinery/pkg/labels"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -14,7 +16,6 @@ import (
 
 	"github.com/hwameistor/local-disk-manager/pkg/apis/hwameistor/v1alpha1"
 	"github.com/hwameistor/local-disk-manager/pkg/builder/localdisknode"
-	"github.com/hwameistor/local-disk-manager/pkg/controller/localdisk"
 	"github.com/hwameistor/local-disk-manager/pkg/utils/kubernetes"
 )
 
@@ -36,7 +37,7 @@ type LocalDiskNodesManager struct {
 	mutex sync.Mutex
 
 	// DiskHandler manage LD resources in cluster
-	DiskHandler *localdisk.LocalDiskHandler
+	DiskHandler *localdisk2.LocalDiskHandler
 }
 
 func (ldn *LocalDiskNodesManager) ReleaseDisk(disk string) error {
@@ -82,7 +83,7 @@ func NewLocalDiskManager() *LocalDiskNodesManager {
 		ldn.GetClient = localdisknode.NewKubeclient
 		cli, _ := kubernetes.NewClient()
 		recoder, _ := kubernetes.NewRecorderFor("localdisknodemanager")
-		ldn.DiskHandler = localdisk.NewLocalDiskHandler(cli, recoder)
+		ldn.DiskHandler = localdisk2.NewLocalDiskHandler(cli, recoder)
 	})
 
 	return ldn
@@ -203,7 +204,7 @@ func (ldn *LocalDiskNodesManager) ClaimDisk(name string) error {
 	return ldn.DiskHandler.UpdateStatus()
 }
 
-func (ldn *LocalDiskNodesManager) reserve(disk *Disk, volume string) error {
+func (ldn *LocalDiskNodesManager) reserve(disk *Disk, pvc string) error {
 	if disk == nil {
 		return fmt.Errorf("disk is nil")
 	}
@@ -214,14 +215,14 @@ func (ldn *LocalDiskNodesManager) reserve(disk *Disk, volume string) error {
 		return err
 	}
 	ldn.DiskHandler.For(*ld)
-	ldn.DiskHandler.SetupLabel(labels.Set{ReservedPVCKey: volume})
+	ldn.DiskHandler.SetupLabel(labels.Set{ReservedPVCKey: pvc})
 	ldn.DiskHandler.SetupStatus(v1alpha1.LocalDiskReserved)
 
 	return ldn.DiskHandler.UpdateStatus()
 }
 
 // ReserveDiskForVolume reserve a LocalDisk by update LocalDisk status to Reserved and label this disk for the volume
-func (ldn *LocalDiskNodesManager) ReserveDiskForVolume(reqDisk Disk, volume string) error {
+func (ldn *LocalDiskNodesManager) ReserveDiskForVolume(reqDisk Disk, pvc string) error {
 	ldn.mutex.Lock()
 	defer ldn.mutex.Unlock()
 
@@ -247,7 +248,7 @@ func (ldn *LocalDiskNodesManager) ReserveDiskForVolume(reqDisk Disk, volume stri
 	finalSelectDisk := ldn.diskScoreMax(reqDisk, matchDisks)
 
 	// update disk status to Reserved
-	if err = ldn.reserve(finalSelectDisk, volume); err != nil {
+	if err = ldn.reserve(finalSelectDisk, pvc); err != nil {
 		log.WithError(err).Errorf("failed to reserve disk %s", finalSelectDisk.Name)
 		return err
 	}
