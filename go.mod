@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/golang/mock v1.6.0
-	github.com/hwameistor/local-disk-manager v0.1.7-0.20220622103647-0cb88150c6fe
+	github.com/hwameistor/local-disk-manager v0.1.7-0.20220623043212-a27d12412361
 	github.com/hwameistor/local-storage v0.1.9
 	github.com/onsi/ginkgo/v2 v2.1.3
 	github.com/onsi/gomega v1.17.0
