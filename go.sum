@@ -351,8 +351,8 @@ github.com/hashicorp/hcl v1.0.0/go.mod h1:E5yfLk+7swimpb2L/Alb/PJmXilQ/rhwaUYs4T
 github.com/heketi/heketi v9.0.1-0.20190917153846-c2e2a4ab7ab9+incompatible/go.mod h1:bB9ly3RchcQqsQ9CpyaQwvva7RS5ytVoSoholZQON6o=
 github.com/heketi/tests v0.0.0-20151005000721-f3775cbcefd6/go.mod h1:xGMAM8JLi7UkZt1i4FQeQy0R2T8GLUwQhOP5M1gBhy4=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
-github.com/hwameistor/local-disk-manager v0.1.7-0.20220622103647-0cb88150c6fe h1:UoE8cWrGvizJDvPE/a5OKuw/F2HrgkB9zWkeowszLK4=
-github.com/hwameistor/local-disk-manager v0.1.7-0.20220622103647-0cb88150c6fe/go.mod h1:zZ+oaZ9JDqbMPXI7RZylw7VfZQUtGv6KsVNfXHApzPY=
+github.com/hwameistor/local-disk-manager v0.1.7-0.20220623043212-a27d12412361 h1:9bnqqZiDOx/SSXmbae+c6OkyuQ5odOnLY6e0NaTWZGI=
+github.com/hwameistor/local-disk-manager v0.1.7-0.20220623043212-a27d12412361/go.mod h1:zZ+oaZ9JDqbMPXI7RZylw7VfZQUtGv6KsVNfXHApzPY=
 github.com/hwameistor/local-storage v0.1.10-0.20220613081711-655adc2b63d0 h1:+Fn5933DEyu91LmigcNBpat8VGaWUcESr7fd3OevZ6o=
 github.com/hwameistor/local-storage v0.1.10-0.20220613081711-655adc2b63d0/go.mod h1:y97277FMS4ut5t12pVjQFSGqZ8pG13vSg2LCkVO11FA=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
