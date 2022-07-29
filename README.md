@@ -1,3 +1,7 @@
+[DEPRECATED]
+
+The code has been move to https://github.com/hwameistor/hwameistor.
+
 # HwameiStor Scheduler
 
 ## Introduction
